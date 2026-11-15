@@ -11,6 +11,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -42,3 +43,77 @@ jobs:
 
       - name: Test
         run: pytest
+
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements.txt
+
+      - name: Install CPU PyTorch
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install package
+        run: pip install -e ".[tokenizer,dev]"
+
+      - name: End-to-end smoke pipeline
+        run: make smoke-data smoke-train smoke-perplexity smoke-generate eval
+
+      - name: Resume smoke run
+        run: python -m aurora.training.pretrain --config configs/smoke.yaml --max-steps 51 --auto-resume
+
+      - name: Verify provenance artifacts
+        run: |
+          test -s runs/smoke/metrics.jsonl
+          test -s reports/smoke_eval.json
+          python - <<'PY'
+          import json
+          import pathlib
+          import torch
+
+          rows = [
+              json.loads(line)
+              for line in pathlib.Path("runs/smoke/metrics.jsonl").read_text().splitlines()
+          ]
+          assert {"train", "validation", "resume"} <= {row["type"] for row in rows}
+          assert all(row["run_id"] and row["created_utc"] for row in rows)
+
+          checkpoint = torch.load("runs/smoke/latest.pt", weights_only=True)
+          metadata = checkpoint["run_metadata"]
+          assert metadata["run_id"] and metadata["started_utc"]
+          assert metadata["git"]["commit"]
+          assert metadata["environment"]["python"] and metadata["environment"]["torch"]
+          assert metadata["dataset"]["version"]
+          assert metadata["dataset"]["fingerprint"].startswith("sha256:")
+          assert metadata["dataset"]["manifest_linked"] is True
+          assert metadata["resume_count"] == 1
+          assert checkpoint["metrics"]["last_train"]
+          assert checkpoint["metrics"]["last_validation"]
+          assert {row["run_id"] for row in rows} == {metadata["run_id"]}
+
+          report = json.loads(pathlib.Path("reports/smoke_eval.json").read_text())
+          assert report["run_metadata"]["run_id"] == metadata["run_id"]
+          assert report["evaluation"]["environment"]["torch"]
+          assert report["dataset_versions"]
+          assert report["results"]["val"]["dataset_version"] == report["dataset_versions"][0]
+          assert report["checkpoint"]["run_id"] == metadata["run_id"]
+          assert report["settings"]["verify_data"] is True
+          PY
+
+      - name: Upload provenance artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-provenance
+          path: |
+            runs/smoke/metrics.jsonl
+            reports/smoke_eval.json
+          if-no-files-found: warn

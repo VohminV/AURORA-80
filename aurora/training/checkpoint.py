@@ -11,7 +11,7 @@ from torch.optim.lr_scheduler import LRScheduler
 
 from aurora.config import ExperimentConfig
 
-CHECKPOINT_FORMAT_VERSION = 1
+CHECKPOINT_FORMAT_VERSION = 2
 
 REQUIRED_CHECKPOINT_KEYS = (
     "model",
@@ -20,6 +20,11 @@ REQUIRED_CHECKPOINT_KEYS = (
     "step",
     "config",
     "qat_active",
+)
+
+PROVENANCE_CHECKPOINT_KEYS = (
+    "run_metadata",
+    "metrics",
 )
 
 
@@ -40,6 +45,23 @@ def validate_checkpoint(checkpoint: Any, check_finite: bool = True) -> None:
                 f"Checkpoint format version {version} is newer than supported "
                 f"version {CHECKPOINT_FORMAT_VERSION}"
             )
+        if version >= 2:
+            missing_provenance = [
+                key for key in PROVENANCE_CHECKPOINT_KEYS if key not in checkpoint
+            ]
+            if missing_provenance:
+                raise ValueError(f"Checkpoint is missing required keys: {missing_provenance}")
+
+    run_metadata = checkpoint.get("run_metadata")
+    if run_metadata is not None:
+        if not isinstance(run_metadata, dict):
+            raise ValueError("Checkpoint 'run_metadata' entry must be a dictionary")
+        run_id = run_metadata.get("run_id")
+        if not isinstance(run_id, str) or not run_id:
+            raise ValueError("Checkpoint run_metadata has no run_id")
+    metrics = checkpoint.get("metrics")
+    if metrics is not None and not isinstance(metrics, dict):
+        raise ValueError("Checkpoint 'metrics' entry must be a dictionary")
 
     state_dict = checkpoint["model"]
     if not isinstance(state_dict, dict):
@@ -62,6 +84,8 @@ def save_checkpoint(
     qat_active: bool,
     best_val: float | None = None,
     rng_state: dict[str, Any] | None = None,
+    run_metadata: dict[str, Any] | None = None,
+    metrics: dict[str, Any] | None = None,
 ) -> None:
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -77,6 +101,8 @@ def save_checkpoint(
         "qat_active": qat_active,
         "best_val": best_val,
         "rng_state": rng_state,
+        "run_metadata": run_metadata,
+        "metrics": metrics,
     }
     torch.save(checkpoint, temporary)
     os.replace(temporary, destination)

@@ -4,7 +4,6 @@ import argparse
 import json
 import math
 from collections.abc import Sequence
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +13,9 @@ from torch.utils.data import DataLoader
 
 from aurora.config import ExperimentConfig
 from aurora.data.dataset import MemmapTokenDataset
+from aurora.data.provenance import resolve_dataset_source
 from aurora.inference import inference_autocast, load_model_from_checkpoint, model_output
+from aurora.provenance import environment_metadata, git_metadata, utc_now
 from aurora.training.checkpoint import load_checkpoint
 from aurora.utils import resolve_device
 
@@ -41,22 +42,22 @@ def parse_datasets(items: Sequence[str]) -> list[tuple[str, Path]]:
     return datasets
 
 
-def _manifest_metadata(path: Path) -> dict[str, Any] | None:
-    manifest_path = path.parent / "manifest.json"
-    if not manifest_path.is_file():
+def _manifest_metadata(
+    dataset_version: str | None,
+    split: str | None,
+    sha256: str | None,
+    tokens: int | None,
+    manifest_path: str | None,
+) -> dict[str, Any] | None:
+    if manifest_path is None:
         return None
-    try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    metadata: dict[str, Any] = {"path": str(manifest_path)}
-    for split, entry in manifest.get("outputs", {}).items():
-        if isinstance(entry, dict) and entry.get("path") == path.name:
-            metadata["split"] = split
-            metadata["sha256"] = entry.get("sha256")
-            metadata["tokens"] = entry.get("tokens")
-            break
-    return metadata
+    return {
+        "path": manifest_path,
+        "split": split,
+        "sha256": sha256,
+        "tokens": tokens,
+        "dataset_version": dataset_version,
+    }
 
 
 @torch.no_grad()
@@ -68,7 +69,14 @@ def evaluate_file(
     batch_size: int,
     max_batches: int,
     device: torch.device,
+    verify_data: bool = True,
 ) -> dict[str, Any]:
+    source = resolve_dataset_source(
+        path,
+        role="eval",
+        verify_files=verify_data,
+        expected_dtype=config.training.dtype,
+    )
     dataset = MemmapTokenDataset(path, seq_len, dtype=config.training.dtype)
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
@@ -98,8 +106,17 @@ def evaluate_file(
         "batches": batches,
         "loss": mean_loss,
         "perplexity": math.exp(min(mean_loss, 20.0)),
+        "dataset": source.to_dict(),
     }
-    manifest = _manifest_metadata(path)
+    if source.dataset_version is not None:
+        result["dataset_version"] = source.dataset_version
+    manifest = _manifest_metadata(
+        source.dataset_version,
+        source.split,
+        source.sha256,
+        source.tokens,
+        source.manifest_path,
+    )
     if manifest is not None:
         result["manifest"] = manifest
     return result
@@ -121,6 +138,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--batches", type=int, default=0, help="0 means the full file")
     parser.add_argument("--device", default="auto")
+    parser.add_argument("--no-verify-data", action="store_true")
     parser.add_argument("--output", default="", help="Optional JSON report path")
     return parser
 
@@ -147,22 +165,46 @@ def main(argv: Sequence[str] | None = None) -> None:
             batch_size=args.batch_size,
             max_batches=args.batches,
             device=device,
+            verify_data=not args.no_verify_data,
         )
         results[name] = result
+        version = result.get("dataset_version")
+        version_text = f" | dataset {version}" if version else ""
         print(
             f"{name}: loss {result['loss']:.4f} | perplexity {result['perplexity']:.2f} "
-            f"| tokens {result['tokens']:,}"
+            f"| tokens {result['tokens']:,}{version_text}"
         )
 
     if args.output:
+        run_metadata = checkpoint.get("run_metadata")
+        if not isinstance(run_metadata, dict):
+            run_metadata = None
+        checkpoint_dataset = run_metadata.get("dataset") if run_metadata else None
+        if not isinstance(checkpoint_dataset, dict):
+            checkpoint_dataset = {}
+        dataset_versions = sorted(
+            {
+                str(result["dataset_version"])
+                for result in results.values()
+                if result.get("dataset_version")
+            }
+        )
         report = {
-            "created_utc": datetime.now(timezone.utc).isoformat(),
+            "created_utc": utc_now(),
+            "run_metadata": run_metadata,
             "checkpoint": {
                 "path": str(args.checkpoint),
                 "step": checkpoint.get("step"),
                 "qat_active": checkpoint.get("qat_active"),
                 "architecture": config.model.architecture,
                 "total_parameters": sum(parameter.numel() for parameter in model.parameters()),
+                "run_id": run_metadata.get("run_id") if run_metadata else None,
+                "dataset_versions": checkpoint_dataset.get("versions", []),
+                "metrics": checkpoint.get("metrics"),
+            },
+            "evaluation": {
+                "git": git_metadata(),
+                "environment": environment_metadata(device),
             },
             "settings": {
                 "seq_len": seq_len,
@@ -170,7 +212,9 @@ def main(argv: Sequence[str] | None = None) -> None:
                 "batches": args.batches,
                 "device": str(device),
                 "dtype_amp": config.training.dtype_amp,
+                "verify_data": not args.no_verify_data,
             },
+            "dataset_versions": dataset_versions,
             "results": results,
         }
         output = Path(args.output)

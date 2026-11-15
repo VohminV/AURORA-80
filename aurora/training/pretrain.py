@@ -10,6 +10,7 @@ from typing import Any, cast
 from aurora.config import ExperimentConfig, load_config
 from aurora.data.dataset import MemmapTokenDataset
 from aurora.data.mixture import build_token_mixture
+from aurora.data.provenance import collect_dataset_sources
 from aurora.training.trainer import Trainer
 
 
@@ -18,6 +19,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", required=True, help="Path to a YAML config")
     parser.add_argument("--train-path", default=None)
     parser.add_argument("--val-path", default=None)
+    parser.add_argument(
+        "--dataset-manifest",
+        action="append",
+        default=[],
+        dest="dataset_manifests",
+        metavar="PATH",
+        help="Prepared dataset manifest; repeat to describe mixture sources",
+    )
+    parser.add_argument("--no-verify-data", action="store_true")
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--resume", default=None)
     parser.add_argument("--auto-resume", action="store_true")
@@ -66,10 +76,40 @@ def main(argv: Sequence[str] | None = None) -> None:
         overrides["compile"] = False
     if args.gradient_checkpointing:
         overrides["gradient_checkpointing"] = True
+    if args.dataset_manifests:
+        overrides["dataset_manifests"] = tuple(args.dataset_manifests)
+    if args.no_verify_data:
+        overrides["verify_data"] = False
     if overrides:
         config = ExperimentConfig(
             model=config.model,
             training=replace(config.training, **overrides),
+        )
+
+    configured_train_paths = (
+        config.training.train_paths
+        if config.training.train_paths
+        else ((config.training.train_path,) if config.training.train_path else ())
+    )
+    try:
+        dataset_sources = collect_dataset_sources(
+            configured_train_paths,
+            config.training.val_path or None,
+            train_weights=config.training.train_weights,
+            manifest_paths=config.training.dataset_manifests,
+            verify_files=config.training.verify_data,
+            expected_dtype=config.training.dtype,
+        )
+    except (OSError, ValueError) as error:
+        raise SystemExit(str(error)) from error
+    for dataset_source in dataset_sources:
+        logger.info(
+            "Dataset %s | split %s | manifest version %s | sha256 %s | verified %s",
+            dataset_source.path,
+            dataset_source.split or "none",
+            dataset_source.dataset_version or "unversioned",
+            dataset_source.sha256,
+            dataset_source.verified,
         )
 
     train_sampler = None
@@ -85,12 +125,12 @@ def main(argv: Sequence[str] | None = None) -> None:
         except FileNotFoundError as error:
             raise SystemExit(str(error)) from error
         total_weight = sum(source.weight for source in sources)
-        for source in sources:
+        for mixture_source in sources:
             logger.info(
                 "Mixture source %s | weight %.3f | samples %d",
-                source.path,
-                source.weight / total_weight,
-                source.samples,
+                mixture_source.path,
+                mixture_source.weight / total_weight,
+                mixture_source.samples,
             )
     else:
         train_path = Path(config.training.train_path)
@@ -116,7 +156,13 @@ def main(argv: Sequence[str] | None = None) -> None:
     if val_dataset is not None:
         logger.info("Validation samples: %d", len(val_dataset))
 
-    trainer = Trainer(config, train_dataset, val_dataset, train_sampler=train_sampler)
+    trainer = Trainer(
+        config,
+        train_dataset,
+        val_dataset,
+        train_sampler=train_sampler,
+        dataset_sources=dataset_sources,
+    )
     trainer.fit()
 
 

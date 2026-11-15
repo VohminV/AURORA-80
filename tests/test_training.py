@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from aurora.config import ExperimentConfig
 from aurora.data.dataset import MemmapTokenDataset
 from aurora.data.mixture import build_token_mixture
-from aurora.training.checkpoint import load_checkpoint
+from aurora.training.checkpoint import CHECKPOINT_FORMAT_VERSION, load_checkpoint
 from aurora.training.trainer import Trainer
 
 
@@ -43,9 +45,24 @@ def test_training_checkpoint_and_resume(
     assert latest.is_file()
     assert best.is_file()
     checkpoint = load_checkpoint(latest)
-    assert checkpoint["format_version"] == 1
+    assert checkpoint["format_version"] == CHECKPOINT_FORMAT_VERSION
     assert checkpoint["step"] == training.max_steps
     assert checkpoint["qat_active"] is False
+    run_metadata = checkpoint["run_metadata"]
+    assert run_metadata["run_id"]
+    assert run_metadata["started_utc"]
+    assert "commit" in run_metadata["git"]
+    assert run_metadata["environment"]["torch"]
+    assert run_metadata["dataset"]["fingerprint"].startswith("sha256:")
+    assert run_metadata["dataset"]["manifest_linked"] is False
+    assert [source["role"] for source in run_metadata["dataset"]["sources"]] == ["train", "val"]
+    assert checkpoint["metrics"]["last_train"] is not None
+    assert checkpoint["metrics"]["last_validation"] is not None
+
+    metrics_path = Path(training.output_dir) / "metrics.jsonl"
+    records = [json.loads(line) for line in metrics_path.read_text(encoding="utf-8").splitlines()]
+    assert {"train", "validation"} <= {record["type"] for record in records}
+    assert {record["run_id"] for record in records} == {run_metadata["run_id"]}
 
     resumed_training = replace(training, max_steps=training.max_steps + 1, resume=str(latest))
     resumed_config = ExperimentConfig(model=config.model, training=resumed_training)
@@ -53,6 +70,55 @@ def test_training_checkpoint_and_resume(
     resumed.fit()
     resumed_checkpoint = load_checkpoint(Path(training.output_dir) / "latest.pt")
     assert resumed_checkpoint["step"] == resumed_training.max_steps
+    assert resumed_checkpoint["run_metadata"]["run_id"] == run_metadata["run_id"]
+    assert resumed_checkpoint["run_metadata"]["resume_count"] == 1
+    assert resumed_checkpoint["run_metadata"]["original_git"] == run_metadata["git"]
+    assert resumed_checkpoint["run_metadata"]["original_environment"] == run_metadata["environment"]
+    assert resumed_checkpoint["run_metadata"]["resumed_from"] == str(latest)
+
+    second_training = replace(training, max_steps=training.max_steps + 2, resume=str(latest))
+    second_config = ExperimentConfig(model=config.model, training=second_training)
+    second = Trainer(second_config, train_dataset, val_dataset)
+    second.fit()
+    second_checkpoint = load_checkpoint(Path(training.output_dir) / "latest.pt")
+    assert second_checkpoint["step"] == second_training.max_steps
+    assert second_checkpoint["run_metadata"]["run_id"] == run_metadata["run_id"]
+    assert second_checkpoint["run_metadata"]["resume_count"] == 2
+    assert second_checkpoint["run_metadata"]["original_git"] == run_metadata["git"]
+    assert second_checkpoint["run_metadata"]["original_environment"] == run_metadata["environment"]
+
+    records = [json.loads(line) for line in metrics_path.read_text(encoding="utf-8").splitlines()]
+    assert "resume" in {record["type"] for record in records}
+    assert {record["run_id"] for record in records} == {run_metadata["run_id"]}
+
+
+def test_resume_rejects_changed_dataset(
+    tmp_path: Path, tiny_experiment_config: ExperimentConfig
+) -> None:
+    train_path = tmp_path / "train.bin"
+    _write_tokens(train_path, 31)
+    training = replace(
+        tiny_experiment_config.training,
+        train_path=str(train_path),
+        val_path="",
+        max_steps=2,
+        eval_interval=0,
+        save_interval=2,
+        output_dir=str(tmp_path / "provenance_run"),
+    )
+    config = ExperimentConfig(model=tiny_experiment_config.model, training=training)
+    Trainer(config, MemmapTokenDataset(train_path, training.seq_len)).fit()
+    latest = Path(training.output_dir) / "latest.pt"
+
+    _write_tokens(train_path, 32)
+    resumed_training = replace(training, max_steps=3, resume=str(latest))
+    resumed_config = ExperimentConfig(model=config.model, training=resumed_training)
+    resumed = Trainer(
+        resumed_config,
+        MemmapTokenDataset(train_path, resumed_training.seq_len),
+    )
+    with pytest.raises(ValueError, match="Dataset provenance mismatch"):
+        resumed.fit()
 
 
 def test_qat_activation(tmp_path: Path, tiny_experiment_config: ExperimentConfig) -> None:

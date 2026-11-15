@@ -49,6 +49,9 @@ tensorboard/
 logs/
 *.log
 
+# Generated smoke artifacts
+/reports/smoke_eval.json
+
 # Model weights and custom formats
 weights/
 models/

@@ -103,6 +103,8 @@ class TrainingConfig:
     train_paths: tuple[str, ...] = ()
     train_weights: tuple[float, ...] = ()
     val_path: str = ""
+    dataset_manifests: tuple[str, ...] = ()
+    verify_data: bool = True
     seq_len: int = 512
     dtype: str = "uint16"
     batch_size: int = 4
@@ -156,6 +158,9 @@ class TrainingConfig:
             )
         elif self.train_weights:
             raise ValueError("train_weights requires train_paths")
+        if any(not path for path in self.dataset_manifests):
+            raise ValueError("dataset_manifests must not contain empty paths")
+        object.__setattr__(self, "dataset_manifests", tuple(self.dataset_manifests))
         if self.dtype not in {"uint16", "uint32", "int32", "int64"}:
             raise ValueError("dtype must be one of uint16, uint32, int32, int64")
         if self.seq_len <= 0 or self.batch_size <= 0 or self.grad_accum_steps <= 0:

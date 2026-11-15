@@ -22,10 +22,11 @@
 - [x] Git-репозиторий, SSH remote, первый коммит отправлен в `origin/main`.
 - [x] Конфиги `smoke`, `100m`, `100m_qat`, `transformer_100m`, `1b`, `80b`.
 - [x] Расчёт параметров: 100M — 105.73M total / 49.10M active; 1B — 929.49M / 325.51M; 80B — 80.49B / 11.52B; Transformer-100M baseline — 106.28M.
-- [x] 100 тестов; `ruff`, `mypy` проходят.
+- [x] 114 тестов; `ruff`, `mypy` проходят.
 - [x] Smoke-обучение, resume, генерация, perplexity, QAT-обучение и QAT-inference.
 - [x] Демонстрационный корпус и скрипт подсчёта параметров.
 - [x] CI, `Makefile`, потоковая подготовка данных с manifest.
+- [x] Провенанс экспериментов: run metadata в checkpoint, JSONL-метрики и eval report.
 - [x] `L_memory`/`L_consistency`, throughput/RAM benchmark, Transformer baseline, eval harness.
 
 ### 0.2 Чего принципиально ещё нет
@@ -51,10 +52,12 @@
 - [x] `P0` Seed, deterministic-режим, сохранение/восстановление RNG.
 - [x] `P0` Checkpoint save/load, atomic replace, `weights_only=True`.
 - [x] `P0` Resume обучения, включая QAT.
+- [x] `P0` Провенанс экспериментов: run metadata (git, окружение, dataset fingerprint) в checkpoint, JSONL-метрики и eval report.
+- [x] `P0` Проверка `manifest.dataset_version`, размеров и SHA-256 для train/val/mixture при запуске и resume.
 - [x] `P1` Опциональный TensorBoard.
 - [x] `P1` Опциональный `torch.compile` (код есть).
 - [x] `P0` Проверить `torch.compile` на 100M конфигурации (`aot_eager`; `inductor` заблокирован отсутствием `Python.h` в окружении).
-- [x] `P0` CI: lint, mypy, tests на каждый push.
+- [x] `P0` CI: lint, mypy, tests и end-to-end smoke на каждый push.
 - [ ] `P1` Docker-образ для обучения и inference.
 - [x] `P1` Makefile/Taskfile с типовыми командами.
 - [ ] `P2` Публикация пакета/версионирование.
@@ -139,7 +142,7 @@
 
 ### 1.7 Качество и документация
 
-- [x] `P0` 100 тестов на архитектуру, память, роутер, QAT, обучение, данные, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card и inference.
+- [x] `P0` 114 тестов на архитектуру, память, роутер, QAT, обучение, данные, чекпоинты, провенанс, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card и inference.
 - [x] `P0` `ruff`, `mypy`, инструкции запуска.
 - [x] `P0` README с ограничениями и научной базой.
 - [x] `P0` Зафиксировать baseline-метрики smoke-модели.
@@ -152,7 +155,7 @@
 - [x] Smoke-обучение воспроизводимо.
 - [x] Checkpoint можно сохранить, загрузить и использовать.
 - [x] QAT-модель можно обучить и запустить.
-- [ ] CI зелёный на чистой машине.
+- [x] CI зелёный на чистой машине (lint, mypy, pytest и end-to-end smoke с resume и проверкой провенанса).
 - [x] Замерены throughput, память и latency прототипа (CPU).
 
 ---

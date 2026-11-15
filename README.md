@@ -290,6 +290,18 @@ training:
 
 Готовый пример: `configs/aurora_100m_mixture.yaml`. Сэмплер тянет примеры с replacement, поэтому ожидаемая доля домена за эпоху равна нормализованному весу. `train_path` и `train_paths` взаимоисключающие.
 
+Для каждого `.bin` trainer и eval автоматически ищут `manifest.json` рядом с файлом, проверяют `dataset_version`, размер и SHA-256, а также dtype. Если manifest лежит отдельно, его можно передать явно:
+
+```bash
+python -m aurora.training.pretrain \
+  --config configs/aurora_100m_mixture.yaml \
+  --dataset-manifest data/processed/ru/manifest.json \
+  --dataset-manifest data/processed/en/manifest.json \
+  --dataset-manifest data/processed/code/manifest.json
+```
+
+Пути train/val/mixture должны быть описаны в переданных manifest-файлах. `--no-verify-data` пропускает повторное хеширование, но оставляет проверку версии manifest и записанных checksums.
+
 ### Запуск AURORA-100M
 
 ```bash
@@ -355,6 +367,14 @@ python -m aurora.training.pretrain \
 
 `--auto-resume` подхватывает `latest.pt` из `output_dir`, если он существует. При загрузке любой чекпоинт проверяется на обязательные ключи, версию формата и NaN/Inf в весах.
 
+### Провенанс экспериментов
+
+Каждый чекпоинт формата v2 содержит `run_metadata`: `run_id`, время старта и resume, git commit/branch/dirty, окружение (Python, платформа, Torch, NumPy, CUDA/cuDNN, устройство) и provenance данных — пути, split, SHA-256, `manifest.dataset_version` и общий dataset fingerprint. Чекпоинт также хранит последние train/validation-метрики и путь к JSONL-логу.
+
+Trainer пишет append-only `runs/<run>/metrics.jsonl` со строками `train`, `validation` и `resume`; каждая строка содержит `run_id`, шаг, timestamp и метрики. При resume `run_id` сохраняется, а fingerprint данных сравнивается с сохранённым: изменение содержимого `.bin`, mixture-весов, split или версии manifest приводит к ошибке `Dataset provenance mismatch`.
+
+Eval-отчёт (`reports/smoke_eval.json`) теперь включает `run_metadata` чекпоинта, git/окружение самой оценки и `dataset_version` каждого проверенного файла. Формат описан в `docs/formats.md`.
+
 ---
 
 ## Что реализовано
@@ -368,23 +388,25 @@ python -m aurora.training.pretrain \
 - Cosine scheduler с warmup.
 - BF16/FP16 autocast, GradScaler для FP16.
 - Gradient accumulation, clipping и пропуск нефинитных шагов.
-- Атомарные чекпоинты, resume, авто-resume, best/latest и проверка целостности тензоров.
+- Атомарные чекпоинты, resume, авто-resume, best/latest, проверка целостности тензоров и run metadata (git, окружение, dataset fingerprint).
+- JSONL-лог train/validation-метрик и сводка метрик в чекпоинте.
 - `L_memory` и `L_consistency` для ассоциативной памяти.
 - Validation loss и perplexity.
 - SentencePiece и byte-level tokenizer; `aurora-tokenizer-stats` для fertility/compression.
 - Потоковая подготовка данных с SHA-256 manifest и content-addressed `dataset_version`.
+- Автоматическая проверка manifest для train/val/mixture-путей на запуске и при resume.
 - Генерация data card из manifest с проверкой checksums (`aurora-data-card`).
 - Memmap-датасет для токенизированных корпусов и смешивание доменов с весами.
 - Transformer baseline с RoPE и KV-cache, совместимый с trainer/inference/eval.
-- Единый eval harness с per-domain perplexity и JSON-отчётом.
+- Единый eval harness с per-domain perplexity, dataset_version и git/окружением в JSON-отчёте.
 - Ternary-квантование, упаковка 2-bit, QAT через straight-through estimator и версионированный AURORA-TQ архив.
 - Загрузка чекпоинтов для инференса с автоматическим включением ternary-режима.
 - Генерация с temperature, top-k, top-p и repetition penalty; батчевый и streaming-режимы.
 - HTTP API для генерации (`aurora-serve`) и защита от слишком больших запросов.
 - Gradient checkpointing, early stopping и остановка по token budget.
 - Автоматический BF16/FP16 autocast на CUDA при генерации и оценке perplexity.
-- CI (lint, mypy, tests), `Makefile`, benchmark throughput/RAM/latency.
-- 100 тестов: причинность, состояния, память, маршрутизация, квантование, обучение, resume, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, baseline и инференс.
+- CI (lint, mypy, tests, end-to-end smoke на чистом runner), `Makefile`, benchmark throughput/RAM/latency.
+- 114 тестов: причинность, состояния, память, маршрутизация, квантование, обучение, resume, провенанс, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, baseline и инференс.
 
 ---
 
@@ -419,7 +441,9 @@ AURORA-80/
 │   ├── data/
 │   │   ├── prepare.py
 │   │   ├── dataset.py
-│   │   └── mixture.py
+│   │   ├── mixture.py
+│   │   ├── provenance.py
+│   │   └── version.py
 │   ├── quantization/
 │   │   ├── ternary.py
 │   │   ├── qat.py
@@ -430,6 +454,7 @@ AURORA-80/
 │   ├── config.py
 │   ├── generation.py
 │   ├── inference.py
+│   ├── provenance.py
 │   ├── server.py
 │   └── utils.py
 ├── configs/

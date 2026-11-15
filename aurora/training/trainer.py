@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 import logging
 import math
 import time
+from collections.abc import Sequence
 from contextlib import nullcontext
 from pathlib import Path
 from typing import Any, cast
@@ -17,6 +19,12 @@ from aurora.architecture.factory import (
     set_gradient_checkpointing,
 )
 from aurora.config import ExperimentConfig
+from aurora.data.provenance import (
+    DatasetSource,
+    collect_dataset_sources,
+    describe_dataset_sources,
+)
+from aurora.provenance import build_run_metadata, utc_now
 from aurora.quantization import convert_to_ternary
 from aurora.training.checkpoint import load_checkpoint, save_checkpoint
 from aurora.training.optimizer import create_optimizer
@@ -40,6 +48,7 @@ class Trainer:
         train_dataset: Dataset,
         val_dataset: Dataset | None = None,
         train_sampler: Sampler[int] | None = None,
+        dataset_sources: Sequence[DatasetSource] | None = None,
     ) -> None:
         self.config = config
         self.training = config.training
@@ -75,6 +84,27 @@ class Trainer:
 
         self.output_dir = Path(self.training.output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        if dataset_sources is None:
+            configured_train_paths = (
+                self.training.train_paths
+                if self.training.train_paths
+                else ((self.training.train_path,) if self.training.train_path else ())
+            )
+            dataset_sources = collect_dataset_sources(
+                configured_train_paths,
+                self.training.val_path or None,
+                train_weights=self.training.train_weights,
+                manifest_paths=self.training.dataset_manifests,
+                verify_files=self.training.verify_data,
+                expected_dtype=self.training.dtype,
+            )
+        self.dataset_sources = list(dataset_sources)
+        self.metrics_file = self.output_dir / "metrics.jsonl"
+        self.run_metadata = build_run_metadata(self.device)
+        self.run_metadata["dataset"] = describe_dataset_sources(self.dataset_sources)
+        self.run_metadata["resume_count"] = 0
+        self.last_train_metrics: dict[str, Any] | None = None
+        self.last_validation_metrics: dict[str, Any] | None = None
         self.step = 0
         self.best_val = float("inf")
         self.tokens_seen = 0
@@ -96,6 +126,26 @@ class Trainer:
         if self.amp_dtype is None:
             return nullcontext()
         return torch.autocast(device_type=self.device.type, dtype=self.amp_dtype)
+
+    def _record_metrics(self, record: dict[str, Any]) -> None:
+        payload = {
+            "created_utc": utc_now(),
+            "run_id": self.run_metadata.get("run_id"),
+            **record,
+        }
+        line = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+        with self.metrics_file.open("a", encoding="utf-8") as handle:
+            handle.write(line + "\n")
+
+    def _metrics_summary(self) -> dict[str, Any]:
+        best_val = self.best_val if math.isfinite(self.best_val) else None
+        return {
+            "best_val": best_val,
+            "tokens_seen": self.tokens_seen,
+            "last_train": self.last_train_metrics,
+            "last_validation": self.last_validation_metrics,
+            "metrics_file": str(self.metrics_file),
+        }
 
     def _build_loader(
         self,
@@ -155,6 +205,30 @@ class Trainer:
 
     def _resume(self, path: str | Path) -> None:
         checkpoint = load_checkpoint(path, map_location="cpu")
+        saved_run = checkpoint.get("run_metadata")
+        saved_dataset = saved_run.get("dataset") if isinstance(saved_run, dict) else None
+        current_dataset = self.run_metadata["dataset"]
+        if isinstance(saved_dataset, dict):
+            saved_fingerprint = saved_dataset.get("fingerprint")
+            current_fingerprint = current_dataset.get("fingerprint")
+            saved_versions = saved_dataset.get("versions")
+            versions_changed = bool(saved_versions) and saved_versions != current_dataset.get(
+                "versions"
+            )
+            if (saved_fingerprint is not None and saved_fingerprint != current_fingerprint) or (
+                saved_fingerprint is None and versions_changed
+            ):
+                raise ValueError(
+                    "Dataset provenance mismatch: checkpoint was trained on "
+                    f"{saved_fingerprint or saved_versions}, current data is "
+                    f"{current_fingerprint or current_dataset.get('versions')}. "
+                    "Restore the original dataset or start a new run."
+                )
+        else:
+            self.logger.warning(
+                "Checkpoint has no dataset provenance; skipping dataset verification"
+            )
+
         saved_model_config = checkpoint.get("config", {}).get("model")
         if saved_model_config is not None and saved_model_config != self.config.to_dict()["model"]:
             self.logger.warning("Checkpoint model config differs from the current config")
@@ -179,8 +253,46 @@ class Trainer:
         self.step = int(checkpoint["step"])
         best_val = checkpoint.get("best_val")
         self.best_val = float(best_val) if best_val is not None else float("inf")
+        saved_metrics = checkpoint.get("metrics")
+        if isinstance(saved_metrics, dict):
+            last_train = saved_metrics.get("last_train")
+            if isinstance(last_train, dict):
+                self.last_train_metrics = last_train
+            last_validation = saved_metrics.get("last_validation")
+            if isinstance(last_validation, dict):
+                self.last_validation_metrics = last_validation
+        if isinstance(saved_run, dict):
+            saved_run_id = saved_run.get("run_id")
+            if isinstance(saved_run_id, str) and saved_run_id:
+                self.run_metadata["run_id"] = saved_run_id
+            started_utc = saved_run.get("started_utc")
+            if isinstance(started_utc, str):
+                self.run_metadata["started_utc"] = started_utc
+            original_git = saved_run.get("original_git")
+            if not isinstance(original_git, dict):
+                original_git = saved_run.get("git")
+            if isinstance(original_git, dict):
+                self.run_metadata["original_git"] = original_git
+            original_environment = saved_run.get("original_environment")
+            if not isinstance(original_environment, dict):
+                original_environment = saved_run.get("environment")
+            if isinstance(original_environment, dict):
+                self.run_metadata["original_environment"] = original_environment
+            resume_count = saved_run.get("resume_count")
+            self.run_metadata["resume_count"] = (
+                resume_count + 1 if isinstance(resume_count, int) else 1
+            )
+        self.run_metadata["resumed_from"] = str(path)
+        self.run_metadata["resumed_utc"] = utc_now()
         if checkpoint.get("rng_state"):
             load_torch_rng_state_dict(checkpoint["rng_state"])
+        self._record_metrics(
+            {
+                "type": "resume",
+                "step": self.step,
+                "resumed_from": str(path),
+            }
+        )
         self.logger.info("Resumed from %s at step %d", path, self.step)
 
     def _save(self, name: str) -> None:
@@ -195,6 +307,8 @@ class Trainer:
             self.qat_active,
             best_val=self.best_val,
             rng_state=torch_rng_state_dict(),
+            run_metadata=self.run_metadata,
+            metrics=self._metrics_summary(),
         )
 
     @torch.no_grad()
@@ -226,6 +340,8 @@ class Trainer:
     def _evaluate_and_log(self) -> bool:
         val_loss = self.evaluate()
         perplexity = math.exp(min(val_loss, 20.0))
+        improved = val_loss < self.best_val
+        best_val = val_loss if improved else self.best_val
         self.logger.info(
             "validation step %d | loss %.4f | perplexity %.2f",
             self.step,
@@ -235,7 +351,21 @@ class Trainer:
         if self.writer is not None:
             self.writer.add_scalar("validation/loss", val_loss, self.step)
             self.writer.add_scalar("validation/perplexity", perplexity, self.step)
-        if val_loss < self.best_val:
+        self.last_validation_metrics = {
+            "loss": val_loss,
+            "perplexity": perplexity,
+            "best_val": best_val,
+            "improved": improved,
+        }
+        self._record_metrics(
+            {
+                "type": "validation",
+                "step": self.step,
+                "tokens_seen": self.tokens_seen,
+                **self.last_validation_metrics,
+            }
+        )
+        if improved:
             self.best_val = val_loss
             self._evals_without_improvement = 0
             self._save("best.pt")
@@ -281,6 +411,23 @@ class Trainer:
             self.writer.add_scalar("train/lr", learning_rate, self.step)
             self.writer.add_scalar("train/grad_norm", grad_norm, self.step)
             self.writer.add_scalar("train/tokens_per_second", tokens_per_second, self.step)
+        self.last_train_metrics = {
+            "lm_loss": lm_loss,
+            "aux_loss": aux_loss,
+            "memory_loss": memory_loss,
+            "consistency_loss": consistency_loss,
+            "learning_rate": learning_rate,
+            "grad_norm": grad_norm,
+            "tokens_per_second": tokens_per_second,
+        }
+        self._record_metrics(
+            {
+                "type": "train",
+                "step": self.step,
+                "tokens_seen": tokens_seen,
+                **self.last_train_metrics,
+            }
+        )
         self._last_log_time = time.perf_counter()
         self._tokens_since_log = 0
 

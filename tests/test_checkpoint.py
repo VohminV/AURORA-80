@@ -18,6 +18,8 @@ def _checkpoint() -> dict[str, object]:
         "step": 0,
         "config": {},
         "qat_active": False,
+        "run_metadata": {"run_id": "test-run"},
+        "metrics": {},
     }
 
 
@@ -25,9 +27,24 @@ def test_valid_checkpoint_passes_validation() -> None:
     validate_checkpoint(_checkpoint())
 
 
+def test_v1_checkpoint_without_provenance_still_loads() -> None:
+    checkpoint = _checkpoint()
+    checkpoint["format_version"] = 1
+    del checkpoint["run_metadata"]
+    del checkpoint["metrics"]
+    validate_checkpoint(checkpoint)
+
+
 def test_missing_required_key_is_rejected() -> None:
     checkpoint = _checkpoint()
     del checkpoint["optimizer"]
+    with pytest.raises(ValueError, match="missing required keys"):
+        validate_checkpoint(checkpoint)
+
+
+def test_missing_provenance_is_rejected_for_new_format() -> None:
+    checkpoint = _checkpoint()
+    del checkpoint["run_metadata"]
     with pytest.raises(ValueError, match="missing required keys"):
         validate_checkpoint(checkpoint)
 
