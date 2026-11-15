@@ -257,3 +257,27 @@ the report verifies its `dataset_version`, split size and checksum, then include
 `dataset_version`, the split name, token count and SHA-256 of the evaluated file.
 Use `--no-verify-data` to skip rehashing while still keeping the manifest
 metadata.
+
+## Quantization comparison report (`quantization.json`)
+
+`aurora.benchmarks.quantization` writes one report for all weight-only variants:
+
+| Key | Meaning |
+| --- | --- |
+| `created_utc` | Report timestamp |
+| `run_metadata` | Full checkpoint run metadata |
+| `checkpoint` | Path, step, QAT flag, architecture, parameter count and run id |
+| `evaluation` | Git state and environment of the comparison process |
+| `dataset` | Resolved evaluation file: SHA-256, split, tokens, manifest and `dataset_version` |
+| `settings` | Sequence length, batch size, batch limit, group size, calibration steps, `min_features`, skip prefixes and device |
+| `results.<variant>` | Loss, perplexity, token/batch counts and optional `quantization` stats |
+| `results.<variant>.quantization` | Modules, parameters, weight MSE, dense bytes, estimated bytes and `bits_per_weight` (absent or `null` for FP32) |
+
+Variants are weight-only fake quantization (`fp32`, `fp16`, `ternary`,
+`ternary_calibrated`, `int8`, `int4`). They replace eligible `nn.Linear` weights
+before evaluation, so the report measures quality and storage estimates, not
+runtime kernel speed. `fp32` is always included as the baseline; other variants
+also receive `perplexity_delta` and `perplexity_ratio` relative to it. A variant
+is reported as skipped when no layer meets `min_features`/skip rules. QAT
+checkpoints are rejected because their `TernaryLinear` path would re-quantize
+weights during the forward pass.

@@ -3,7 +3,7 @@ PIP ?= $(PYTHON) -m pip
 CONFIG ?= configs/aurora_100m.yaml
 
 .PHONY: install install-dev test lint format format-check check smoke-data smoke-train \
-	smoke-generate smoke-perplexity eval profile benchmark clean
+	smoke-generate smoke-perplexity eval quant-compare profile benchmark clean
 
 install:
 	$(PIP) install -e ".[tokenizer]"
@@ -62,6 +62,15 @@ eval:
 		--checkpoint runs/smoke/best.pt \
 		--data val=data/smoke/val.bin \
 		--output reports/smoke_eval.json
+
+quant-compare:
+	mkdir -p reports
+	$(PYTHON) -m aurora.benchmarks.quantization \
+		--checkpoint runs/smoke/best.pt \
+		--data data/smoke/val.bin \
+		--group-size 16 \
+		--min-features 16 \
+		--output reports/smoke_quantization.json
 
 profile:
 	mkdir -p reports

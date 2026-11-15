@@ -22,7 +22,7 @@
 - [x] Git-репозиторий, SSH remote, первый коммит отправлен в `origin/main`.
 - [x] Конфиги `smoke`, `100m`, `100m_qat`, `transformer_100m`, `1b`, `80b`.
 - [x] Расчёт параметров: 100M — 105.73M total / 49.10M active; 1B — 929.49M / 325.51M; 80B — 80.49B / 11.52B; Transformer-100M baseline — 106.28M.
-- [x] 130 тестов; `ruff`, `mypy` проходят.
+- [x] 134 теста; `ruff`, `mypy` проходят.
 - [x] Smoke-обучение, resume, генерация, perplexity, QAT-обучение и QAT-inference.
 - [x] Демонстрационный корпус и скрипт подсчёта параметров.
 - [x] CI, `Makefile`, потоковая подготовка данных с manifest.
@@ -30,6 +30,7 @@
 - [x] `L_memory`/`L_consistency`, throughput/RAM benchmark, Transformer baseline, eval harness.
 - [x] Потоковое курирование корпуса: exact/near dedup, фильтры качества, PII drop/redact и JSON-отчёт.
 - [x] Offline-калибровка групповых ternary-масштабов (`--calibrate`).
+- [x] Сравнение FP32/FP16/ternary/INT8/INT4 на одном чекпоинте и датасете (`aurora-quant-bench`).
 
 ### 0.2 Чего принципиально ещё нет
 
@@ -124,7 +125,7 @@
 - [ ] `P0` Измерить quality recovery после QAT на 100M.
 - [ ] `P0` Реализовать быстрый ternary matmul/kernel.
 - [x] `P1` Формат сериализации AURORA-TQ (`save_tq`/`load_tq`, CLI `aurora-tq`).
-- [ ] `P1` Сравнить ternary с 4-bit/8-bit и FP16 baseline.
+- [x] `P1` Сравнить ternary с 4-bit/8-bit и FP16 baseline (weight-only PTQ harness; прогон на 100M — после M1-обучения).
 - [x] `P1` Калибровка групповых масштабов (offline по ошибке реконструкции весов; активационная калибровка не реализована).
 - [ ] `P2` Смешанная точность по слоям.
 
@@ -144,7 +145,7 @@
 
 ### 1.7 Качество и документация
 
-- [x] `P0` 130 тестов на архитектуру, память, роутер, QAT, обучение, данные, курирование, чекпоинты, провенанс, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card и inference.
+- [x] `P0` 134 теста на архитектуру, память, роутер, QAT, обучение, данные, курирование, чекпоинты, провенанс, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, сравнение квантизации и inference.
 - [x] `P0` `ruff`, `mypy`, инструкции запуска.
 - [x] `P0` README с ограничениями и научной базой.
 - [x] `P0` Зафиксировать baseline-метрики smoke-модели.

@@ -376,6 +376,20 @@ python -m aurora.quantization.tq export \
 
 `load_tq_model` деквантует ternary-веса в обычную dense-модель для проверки и совместимости; memory-mapped runtime и быстрый ternary matmul пока не реализованы.
 
+### Сравнение квантизации
+
+```bash
+python -m aurora.benchmarks.quantization \
+  --checkpoint runs/aurora_100m/best.pt \
+  --data data/processed/val.bin \
+  --variants fp32 fp16 ternary ternary_calibrated int8 int4 \
+  --group-size 128 \
+  --min-features 256 \
+  --output reports/quantization_compare.json
+```
+
+Все варианты оцениваются на одном чекпоинте и одном наборе данных. FP16, ternary (с калибровкой и без), INT8 и INT4 — weight-only fake quantization: веса подходящих `nn.Linear` заменяются квантованными и деквантованными значениями, остальные слои не меняются. Отчёт содержит loss/perplexity, прирост perplexity относительно FP32, weight MSE, число квантованных параметров и оценку `bit/weight` с учётом FP16-масштабов. Это сравнение качества и оценка размера, а не замер скорости: быстрых INT/ternary-ядер пока нет. QAT-чекпоинты не принимаются; для них используйте `aurora-tq export`.
+
 ### Transformer baseline
 
 ```bash
@@ -429,13 +443,14 @@ Eval-отчёт (`reports/smoke_eval.json`) теперь включает `run_m
 - Единый eval harness с per-domain perplexity, dataset_version и git/окружением в JSON-отчёте.
 - Ternary-квантование, упаковка 2-bit, QAT через straight-through estimator и версионированный AURORA-TQ архив.
 - Offline-калибровка групповых масштабов по минимальной ошибке реконструкции (`--calibrate`).
+- Сравнение FP32/FP16/ternary/INT8/INT4 на одном чекпоинте и датасете (`aurora-quant-bench`).
 - Загрузка чекпоинтов для инференса с автоматическим включением ternary-режима.
 - Генерация с temperature, top-k, top-p и repetition penalty; батчевый и streaming-режимы.
 - HTTP API для генерации (`aurora-serve`) и защита от слишком больших запросов.
 - Gradient checkpointing, early stopping и остановка по token budget.
 - Автоматический BF16/FP16 autocast на CUDA при генерации и оценке perplexity.
 - CI (lint, mypy, tests, end-to-end smoke на чистом runner), `Makefile`, benchmark throughput/RAM/latency.
-- 130 тестов: причинность, состояния, память, маршрутизация, квантование, обучение, resume, провенанс, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, курирование корпуса, baseline и инференс.
+- 134 теста: причинность, состояния, память, маршрутизация, квантование, сравнение квантизации, обучение, resume, провенанс, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, курирование корпуса, baseline и инференс.
 
 ---
 
@@ -476,10 +491,12 @@ AURORA-80/
 │   │   └── version.py
 │   ├── quantization/
 │   │   ├── ternary.py
+│   │   ├── baselines.py
 │   │   ├── qat.py
 │   │   └── tq.py
 │   ├── benchmarks/
 │   │   ├── perplexity.py
+│   │   ├── quantization.py
 │   │   └── evaluate.py
 │   ├── config.py
 │   ├── generation.py

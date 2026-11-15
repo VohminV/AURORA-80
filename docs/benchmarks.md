@@ -134,6 +134,33 @@ Generation from this checkpoint is not meaningful: after 50 steps on a synthetic
 corpus the model emits byte garbage. The smoke run only verifies that the pipeline
 learns and that checkpoints, resume, evaluation and inference work.
 
+## Weight-only quantization smoke comparison (CPU)
+
+This validates the comparison harness on the smoke checkpoint and synthetic
+validation data. It is not evidence about final quality; the model is tiny and
+undertrained.
+
+```bash
+python -m aurora.benchmarks.quantization \
+  --checkpoint runs/smoke/best.pt \
+  --data data/smoke/val.bin \
+  --group-size 16 --min-features 16 \
+  --batch-size 4 --batches 2 --seq-len 32 \
+  --output reports/smoke_quantization.json
+```
+
+| Variant | Perplexity | Weight MSE | bit/weight |
+| --- | ---: | ---: | ---: |
+| FP32 | 111.41 | - | 32 |
+| FP16 weights | 111.41 | 1.37e-11 | 16 |
+| Ternary | 122.90 | 7.84e-05 | 3.00 |
+| Ternary + calibration | 115.51 | 5.33e-05 | 3.00 |
+| INT8 (group 16) | 111.42 | 7.06e-09 | 9.00 |
+| INT4 (group 16) | 111.66 | 2.32e-06 | 5.00 |
+
+Calibration recovers part of the ternary gap on this checkpoint. The numbers are
+CPU fake-quantization results, not a runtime speed benchmark.
+
 ## What is still missing
 
 - CUDA AMP and production `torch.compile` measurements. `aot_eager` completes on

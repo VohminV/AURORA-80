@@ -7,11 +7,15 @@ from aurora.architecture.model import AuroraModel
 from aurora.config import ModelConfig
 from aurora.quantization import (
     TernaryLinear,
+    apply_weight_quantization,
     calibrate_group_scales,
     convert_to_ternary,
     dequantize_ternary,
     pack_ternary,
+    quantize_symmetric,
     quantize_ternary,
+    quantized_tensor_bytes,
+    round_weights_fp16,
     ternary_ste,
     unpack_ternary,
 )
@@ -55,6 +59,43 @@ def test_calibration_is_deterministic() -> None:
     torch.testing.assert_close(capped, initial)
     with pytest.raises(ValueError, match="non-negative"):
         calibrate_group_scales(groups, initial, steps=-1)
+
+
+def test_integer_quantization_error_ordering() -> None:
+    torch.manual_seed(6)
+    weight = torch.randn(16, 64)
+    fp16 = round_weights_fp16(weight)
+    int8 = quantize_symmetric(weight, bits=8, group_size=16)
+    int4 = quantize_symmetric(weight, bits=4, group_size=16)
+    fp16_error = (weight - fp16).pow(2).mean()
+    int8_error = (weight - int8).pow(2).mean()
+    int4_error = (weight - int4).pow(2).mean()
+    assert fp16_error < int8_error < int4_error
+    assert quantized_tensor_bytes((16, 64), 2, 16) == 16 * 64 * 2 // 8 + 16 * 4 * 2
+    with pytest.raises(ValueError, match="bits"):
+        quantize_symmetric(weight, bits=1)
+    with pytest.raises(ValueError, match="bits"):
+        quantized_tensor_bytes((16, 64), 17, 16)
+
+
+def test_apply_weight_quantization_stats(tiny_model_config: ModelConfig) -> None:
+    torch.manual_seed(7)
+    model = AuroraModel(tiny_model_config)
+    stats = apply_weight_quantization(
+        model,
+        lambda weight: quantize_symmetric(weight, bits=8, group_size=8),
+        bits=8,
+        group_size=8,
+        min_features=16,
+    )
+    assert stats.modules > 0
+    assert stats.parameters > 0
+    assert stats.weight_mse > 0
+    assert stats.dense_bytes > stats.estimated_bytes
+    input_ids = torch.randint(0, tiny_model_config.vocab_size, (1, 4))
+    with torch.no_grad():
+        logits = model(input_ids).logits
+    assert torch.isfinite(logits).all()
 
 
 def test_ste_has_gradient() -> None:

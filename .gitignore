@@ -51,6 +51,7 @@ logs/
 
 # Generated smoke artifacts
 /reports/smoke_eval.json
+/reports/smoke_quantization.json
 
 # Model weights and custom formats
 weights/
