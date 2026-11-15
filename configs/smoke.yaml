@@ -1,0 +1,30 @@
+model:
+  vocab_size: 260
+  d_model: 64
+  n_layers: 2
+  n_levels: 2
+  d_state: 32
+  memory_heads: 2
+  n_experts: 4
+  top_k: 2
+  expert_hidden: 128
+  dropout: 0.0
+  tie_embeddings: true
+
+training:
+  train_path: data/smoke/train.bin
+  val_path: data/smoke/val.bin
+  seq_len: 32
+  dtype: uint16
+  batch_size: 4
+  grad_accum_steps: 1
+  max_steps: 50
+  warmup_steps: 10
+  learning_rate: 0.0003
+  eval_interval: 25
+  eval_batches: 4
+  log_interval: 5
+  save_interval: 25
+  output_dir: runs/smoke
+  device: auto
+  dtype_amp: auto

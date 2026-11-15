@@ -1,0 +1,78 @@
+from __future__ import annotations
+
+import torch
+
+from aurora.architecture.model import AuroraModel
+from aurora.config import ModelConfig
+from aurora.quantization import (
+    TernaryLinear,
+    convert_to_ternary,
+    dequantize_ternary,
+    pack_ternary,
+    quantize_ternary,
+    ternary_ste,
+    unpack_ternary,
+)
+from aurora.quantization.ternary import theoretical_size_bytes
+from aurora.utils import parameter_counts
+
+
+def test_quantize_and_dequantize() -> None:
+    torch.manual_seed(0)
+    weight = torch.randn(8, 64)
+    quantized = quantize_ternary(weight, group_size=16)
+    assert quantized.levels.shape == weight.shape
+    assert set(quantized.levels.unique().tolist()) <= {-1, 0, 1}
+    dequantized = dequantize_ternary(quantized)
+    assert dequantized.shape == weight.shape
+    assert torch.isfinite(dequantized).all()
+
+
+def test_ste_has_gradient() -> None:
+    weight = torch.randn(8, 64, requires_grad=True)
+    quantized = ternary_ste(weight, group_size=16)
+    quantized.sum().backward()
+    assert weight.grad is not None
+    assert torch.isfinite(weight.grad).all()
+
+
+def test_pack_unpack_roundtrip_with_padding() -> None:
+    levels = torch.randint(-1, 2, (101,))
+    packed, numel = pack_ternary(levels)
+    assert packed.dtype == torch.uint8
+    assert packed.numel() == 26
+    restored = unpack_ternary(packed, numel)
+    torch.testing.assert_close(restored, levels.to(torch.int8))
+
+
+def test_theoretical_size() -> None:
+    size = theoretical_size_bytes(80_000_000_000, group_size=128)
+    assert 20_000_000_000 <= size <= 22_000_000_000
+
+
+def test_ternary_linear() -> None:
+    torch.manual_seed(0)
+    linear = torch.nn.Linear(64, 32)
+    ternary = TernaryLinear(linear, group_size=16)
+    x = torch.randn(4, 64, requires_grad=True)
+    output = ternary(x)
+    assert output.shape == (4, 32)
+    output.sum().backward()
+    assert linear.weight.grad is not None
+    assert x.grad is not None
+
+
+def test_convert_model_to_ternary(tiny_model_config: ModelConfig) -> None:
+    torch.manual_seed(0)
+    model = AuroraModel(tiny_model_config)
+    total_before, active_before = parameter_counts(model)
+    converted = convert_to_ternary(model, group_size=16, min_features=16)
+    assert converted > 0
+    assert convert_to_ternary(model, group_size=16, min_features=16) == 0
+    total_after, active_after = parameter_counts(model)
+    assert (total_after, active_after) == (total_before, active_before)
+
+    input_ids = torch.randint(0, tiny_model_config.vocab_size, (1, 4))
+    output = model(input_ids)
+    assert output.logits.shape == (1, 4, tiny_model_config.vocab_size)
+    assert torch.isfinite(output.logits).all()

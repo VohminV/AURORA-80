@@ -1,0 +1,33 @@
+model:
+  vocab_size: 32768
+  d_model: 512
+  n_layers: 6
+  n_levels: 4
+  d_state: 128
+  memory_heads: 4
+  n_experts: 8
+  top_k: 2
+  expert_hidden: 1024
+  tie_embeddings: true
+
+training:
+  train_path: data/processed/train.bin
+  val_path: data/processed/val.bin
+  seq_len: 512
+  dtype: uint16
+  batch_size: 4
+  grad_accum_steps: 8
+  max_steps: 100000
+  warmup_steps: 1000
+  learning_rate: 0.0003
+  eval_interval: 500
+  eval_batches: 20
+  log_interval: 10
+  save_interval: 1000
+  output_dir: runs/aurora_100m_qat
+  device: auto
+  dtype_amp: auto
+  qat_enabled: true
+  qat_start_step: 50000
+  qat_group_size: 128
+  qat_min_features: 256

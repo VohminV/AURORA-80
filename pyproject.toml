@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aurora-80"
+version = "0.1.0"
+description = "Adaptive Unified Recurrent and Associative Neural Architecture"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "LicenseRef-Proprietary"
+authors = [{ name = "AURORA Research" }]
+dependencies = [
+    "numpy>=1.24",
+    "PyYAML>=6.0",
+    "torch>=2.2",
+]
+
+[project.optional-dependencies]
+tokenizer = ["sentencepiece>=0.2"]
+logging = ["tensorboard>=2.14"]
+dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.6", "mypy>=1.10"]
+
+[project.scripts]
+aurora-train = "aurora.training.pretrain:main"
+aurora-prepare = "aurora.data.prepare:main"
+aurora-tokenizer = "aurora.tokenizer.train_tokenizer:main"
+aurora-generate = "aurora.generation:main"
+aurora-perplexity = "aurora.benchmarks.perplexity:main"
+
+[tool.setuptools.packages.find]
+include = ["aurora*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+warn_unused_ignores = true

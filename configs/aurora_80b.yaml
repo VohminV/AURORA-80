@@ -1,0 +1,38 @@
+model:
+  vocab_size: 131072
+  d_model: 6144
+  n_layers: 7
+  n_levels: 4
+  d_state: 1536
+  memory_heads: 8
+  n_experts: 20
+  top_k: 2
+  expert_hidden: 29696
+  aux_loss_coef: 0.01
+  router_z_loss_coef: 0.001
+  dropout: 0.0
+  layer_scale_init: 0.1
+  tie_embeddings: false
+
+training:
+  train_path: data/processed_80b/train.bin
+  val_path: data/processed_80b/val.bin
+  seq_len: 4096
+  dtype: uint32
+  batch_size: 1
+  grad_accum_steps: 64
+  max_steps: 1000000
+  warmup_steps: 4000
+  learning_rate: 0.00015
+  weight_decay: 0.1
+  eval_interval: 5000
+  eval_batches: 20
+  log_interval: 10
+  save_interval: 5000
+  output_dir: runs/aurora_80b
+  device: auto
+  dtype_amp: auto
+  qat_enabled: true
+  qat_start_step: 800000
+  qat_group_size: 128
+  qat_min_features: 256
