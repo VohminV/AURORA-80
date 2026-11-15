@@ -30,6 +30,7 @@ aurora-generate = "aurora.generation:main"
 aurora-perplexity = "aurora.benchmarks.perplexity:main"
 aurora-evaluate = "aurora.benchmarks.evaluate:main"
 aurora-serve = "aurora.server:main"
+aurora-tq = "aurora.quantization.tq:main"
 
 [tool.setuptools.packages.find]
 include = ["aurora*"]

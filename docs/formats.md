@@ -63,7 +63,7 @@ byte-offset split and may cut inside a document.
 
 ## AURORA-TQ (ternary weights)
 
-Implemented in `aurora/quantization/ternary.py` and `qat.py`.
+Implemented in `aurora/quantization/ternary.py`, `qat.py` and `tq.py`.
 
 - Weights are quantized along the last dimension in groups of `group_size`
   (default 128; the last group is padded).
@@ -80,20 +80,34 @@ Implemented in `aurora/quantization/ternary.py` and `qat.py`.
   `2 + 16 / 128 = 2.125 bit/weight` (~21.25 GB for 80B parameters), excluding
   alignment, metadata and non-quantized embeddings/routers.
 
-### Proposed on-disk AURORA-TQ layout (not implemented)
+### On-disk AURORA-TQ layout (`*.aurora-tq`, version 1)
 
-The current code packs levels and keeps scales in memory but does not define a
-stable file format. A future `*.aurora-tq` file should contain:
+`aurora.quantization.tq` implements a versioned ZIP container (ZIP magic bytes)
+with `ZIP_STORED` entries:
 
-1. Magic bytes and format version.
-2. JSON metadata: model config, quantization group size, dtype, tensor names,
-   shapes, strides and checksums.
-3. Per-tensor packed level stream followed by group scales.
-4. Optional per-tensor min/max calibration metadata.
+| Entry | Meaning |
+| --- | --- |
+| `metadata.json` | Format/version, full experiment config, quantization settings, tensor table and parameter counts |
+| `tensors/NNNNN.levels` | Packed ternary levels (2 bits per value, `uint8`) |
+| `tensors/NNNNN.scales` | Group scales (`float16` by default, `float32` optional) |
+| `tensors/NNNNN.data` | Dense tensor bytes (embeddings, norms, biases, routers and skipped layers) |
 
-A fast ternary matmul and a memory-mapped expert loader are required before this
-format becomes the runtime path. Until then, QAT checkpoints remain regular
-PyTorch checkpoints and inference uses the PyTorch dequantization path.
+Tensor metadata records canonical name, source state-dict name, kind, shape,
+dtype or group size, entry names and SHA-256 checksums. Loading validates the ZIP
+container, format version, metadata size, entry paths, checksums, shapes, packed
+level size, scales size, duplicate names and unknown kinds. Writes are atomic.
+
+```bash
+python -m aurora.quantization.tq export \
+  --checkpoint runs/aurora_100m_qat/best.pt \
+  --output model.aurora-tq
+python -m aurora.quantization.tq inspect model.aurora-tq
+```
+
+`load_tq_model` dequantizes ternary tensors into a regular dense model. This path
+is for validation and compatibility, not for the future memory-mapped runtime. A
+fast ternary matmul and a memory-mapped expert loader are still required before
+this format becomes the production runtime path.
 
 ## Evaluation report (`eval.json`)
 

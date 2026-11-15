@@ -311,6 +311,17 @@ python -m aurora.training.pretrain --config configs/aurora_100m_qat.yaml
 
 По умолчанию QAT включается на шаге, указанном в `qat_start_step`. Формат AURORA-TQ использует веса `{-s, 0, +s}` и групповые FP16-масштабы. При группе 128 теоретическая стоимость — около `2.125 bit/weight` (примерно 21.25 GB для 80B без накладных расходов).
 
+Экспорт и инспекция версионированного архива:
+
+```bash
+python -m aurora.quantization.tq export \
+  --checkpoint runs/aurora_100m_qat/best.pt \
+  --output model.aurora-tq
+python -m aurora.quantization.tq inspect model.aurora-tq
+```
+
+`load_tq_model` деквантует ternary-веса в обычную dense-модель для проверки и совместимости; memory-mapped runtime и быстрый ternary matmul пока не реализованы.
+
 ### Transformer baseline
 
 ```bash
@@ -350,14 +361,14 @@ python -m aurora.training.pretrain \
 - Memmap-датасет для токенизированных корпусов и смешивание доменов с весами.
 - Transformer baseline с RoPE и KV-cache, совместимый с trainer/inference/eval.
 - Единый eval harness с per-domain perplexity и JSON-отчётом.
-- Ternary-квантование, упаковка 2-bit и QAT через straight-through estimator.
+- Ternary-квантование, упаковка 2-bit, QAT через straight-through estimator и версионированный AURORA-TQ архив.
 - Загрузка чекпоинтов для инференса с автоматическим включением ternary-режима.
 - Генерация с temperature, top-k, top-p и repetition penalty; батчевый и streaming-режимы.
 - HTTP API для генерации (`aurora-serve`) и защита от слишком больших запросов.
 - Gradient checkpointing, early stopping и остановка по token budget.
 - Автоматический BF16/FP16 autocast на CUDA при генерации и оценке perplexity.
 - CI (lint, mypy, tests), `Makefile`, benchmark throughput/RAM/latency.
-- 89 тестов: причинность, состояния, память, маршрутизация, квантование, обучение, resume, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, baseline и инференс.
+- 96 тестов: причинность, состояния, память, маршрутизация, квантование, обучение, resume, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, baseline и инференс.
 
 ---
 
@@ -395,7 +406,8 @@ AURORA-80/
 │   │   └── mixture.py
 │   ├── quantization/
 │   │   ├── ternary.py
-│   │   └── qat.py
+│   │   ├── qat.py
+│   │   └── tq.py
 │   ├── benchmarks/
 │   │   ├── perplexity.py
 │   │   └── evaluate.py
@@ -443,8 +455,8 @@ mypy aurora
 - Все замеры throughput/latency/памяти сделаны на CPU. CUDA AMP и `torch.compile` в этом окружении не проверены.
 - 80B-конфигурация не обучалась и не запускалась. Это расчётная конфигурация.
 - Экспертная система распределена по слоям; стратегия разделяемых экспертов для 80B требует отдельных экспериментов.
-- Дедупликация, фильтрация качества, удаление PII и data mixture ещё не реализованы; подготовка данных потоковая, но без этих этапов.
-- Нет распределённого обучения, C++/CUDA runtime и собственного формата сериализации AURORA-TQ.
+- Дедупликация, фильтрация качества и удаление PII ещё не реализованы; data mixture поддерживается через `train_paths`/`train_weights`, подготовка данных потоковая.
+- Нет распределённого обучения и C++/CUDA runtime. AURORA-TQ v1 реализован, но быстрый ternary matmul и memory-mapped загрузка экспертов ещё не сделаны.
 - Пропускная способность RAM и предсказательная загрузка экспертов для 8 GB VRAM ещё не реализованы.
 
 ---

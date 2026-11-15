@@ -22,7 +22,7 @@
 - [x] Git-репозиторий, SSH remote, первый коммит отправлен в `origin/main`.
 - [x] Конфиги `smoke`, `100m`, `100m_qat`, `transformer_100m`, `1b`, `80b`.
 - [x] Расчёт параметров: 100M — 105.73M total / 49.10M active; 1B — 929.49M / 325.51M; 80B — 80.49B / 11.52B; Transformer-100M baseline — 106.28M.
-- [x] 89 тестов; `ruff`, `mypy` проходят.
+- [x] 96 тестов; `ruff`, `mypy` проходят.
 - [x] Smoke-обучение, resume, генерация, perplexity, QAT-обучение и QAT-inference.
 - [x] Демонстрационный корпус и скрипт подсчёта параметров.
 - [x] CI, `Makefile`, потоковая подготовка данных с manifest.
@@ -118,7 +118,7 @@
 - [x] `P0` Тесты QAT-обучения и QAT-inference.
 - [ ] `P0` Измерить quality recovery после QAT на 100M.
 - [ ] `P0` Реализовать быстрый ternary matmul/kernel.
-- [ ] `P1` Формат сериализации AURORA-TQ.
+- [x] `P1` Формат сериализации AURORA-TQ (`save_tq`/`load_tq`, CLI `aurora-tq`).
 - [ ] `P1` Сравнить ternary с 4-bit/8-bit и FP16 baseline.
 - [ ] `P1` Калибровка групповых масштабов.
 - [ ] `P2` Смешанная точность по слоям.
@@ -139,7 +139,7 @@
 
 ### 1.7 Качество и документация
 
-- [x] `P0` 89 тестов на архитектуру, память, роутер, QAT, обучение, данные, чекпоинты, gradient checkpointing, mixture, document split, HTTP API и inference.
+- [x] `P0` 96 тестов на архитектуру, память, роутер, QAT, обучение, данные, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ и inference.
 - [x] `P0` `ruff`, `mypy`, инструкции запуска.
 - [x] `P0` README с ограничениями и научной базой.
 - [x] `P0` Зафиксировать baseline-метрики smoke-модели.
@@ -288,7 +288,7 @@
 
 ### 5.2 Runtime
 
-- [ ] `P0` Формат AURORA-TQ: weights, scales, metadata, versioning.
+- [x] `P0` Формат AURORA-TQ: weights, scales, metadata, versioning (v1, checksums).
 - [ ] `P0` Быстрый ternary matmul.
 - [ ] `P0` C++/CUDA inference runtime.
 - [ ] `P0` Memory-mapped эксперты.
@@ -303,7 +303,7 @@
 - [ ] QAT-модель достигает согласованного quality target.
 - [ ] Runtime укладывается в 8 GB VRAM на целевой конфигурации.
 - [ ] Есть воспроизводимый benchmark latency/throughput.
-- [ ] Формат весов задокументирован и стабилен.
+- [x] Формат весов задокументирован и стабилен (AURORA-TQ v1).
 
 ---
 

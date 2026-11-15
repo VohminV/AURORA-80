@@ -7,14 +7,18 @@ from aurora.quantization.ternary import (
     ternary_ste,
     unpack_ternary,
 )
+from aurora.quantization.tq import load_tq, load_tq_model, save_tq
 
 __all__ = [
     "TernaryLinear",
     "TernaryTensor",
     "convert_to_ternary",
+    "load_tq",
+    "load_tq_model",
     "dequantize_ternary",
     "pack_ternary",
     "quantize_ternary",
+    "save_tq",
     "ternary_ste",
     "unpack_ternary",
 ]
