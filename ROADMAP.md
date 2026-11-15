@@ -22,7 +22,7 @@
 - [x] Git-репозиторий, SSH remote, первый коммит отправлен в `origin/main`.
 - [x] Конфиги `smoke`, `100m`, `100m_qat`, `transformer_100m`, `1b`, `80b`.
 - [x] Расчёт параметров: 100M — 105.73M total / 49.10M active; 1B — 929.49M / 325.51M; 80B — 80.49B / 11.52B; Transformer-100M baseline — 106.28M.
-- [x] 65 автотестов; `ruff`, `mypy` проходят.
+- [x] 74 автотеста; `ruff`, `mypy` проходят.
 - [x] Smoke-обучение, resume, генерация, perplexity, QAT-обучение и QAT-inference.
 - [x] Демонстрационный корпус и скрипт подсчёта параметров.
 - [x] CI, `Makefile`, потоковая подготовка данных с manifest.
@@ -86,9 +86,9 @@
 - [x] `P0` Smoke-обучение подтверждает снижение loss.
 - [ ] `P0` Проверить AMP на реальной CUDA (в venv сейчас CPU-only torch).
 - [x] `P0` Замерить throughput и peak memory для 100M (CPU; CUDA-замер ещё нужен).
-- [ ] `P1` Gradient checkpointing для длинных последовательностей.
+- [x] `P1` Gradient checkpointing для длинных последовательностей (CPU-тесты; CUDA-замер памяти не сделан).
 - [ ] `P1` Подобрать learning rate, betas, warmup, weight decay на 100M.
-- [ ] `P1` Добавить early-stopping/остановку по compute budget.
+- [x] `P1` Early stopping и остановка по compute budget (`max_tokens`).
 - [ ] `P1` Эксперимент-трекер: W&B или MLflow.
 - [ ] `P2` Curriculum learning и context extension.
 
@@ -131,7 +131,7 @@
 - [x] `P0` Centralized checkpoint loading и autocast.
 - [x] `P0` Perplexity evaluation.
 - [x] `P0` Замерить latency/tokens/s/RAM для 100M (CPU; CUDA-замер ещё нужен).
-- [ ] `P0` Реализовать батчевый и streaming inference.
+- [x] `P0` Реализовать батчевый и streaming inference (`generate_batch`, `stream_generate`).
 - [ ] `P1` HTTP API/server.
 - [ ] `P1` Memory-mapped загрузка экспертов.
 - [ ] `P1` Expert prefetch/cache для 8 GB VRAM.
@@ -139,7 +139,7 @@
 
 ### 1.7 Качество и документация
 
-- [x] `P0` 65 тестов на архитектуру, память, роутер, QAT, обучение, данные, чекпоинты и inference.
+- [x] `P0` 74 теста на архитектуру, память, роутер, QAT, обучение, данные, чекпоинты, gradient checkpointing и inference.
 - [x] `P0` `ruff`, `mypy`, инструкции запуска.
 - [x] `P0` README с ограничениями и научной базой.
 - [x] `P0` Зафиксировать baseline-метрики smoke-модели.

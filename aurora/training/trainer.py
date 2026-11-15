@@ -11,7 +11,11 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 
-from aurora.architecture.factory import CausalLanguageModel, build_model
+from aurora.architecture.factory import (
+    CausalLanguageModel,
+    build_model,
+    set_gradient_checkpointing,
+)
 from aurora.config import ExperimentConfig
 from aurora.quantization import convert_to_ternary
 from aurora.training.checkpoint import load_checkpoint, save_checkpoint
@@ -45,6 +49,9 @@ class Trainer:
         set_seed(self.training.seed)
 
         self.model = build_model(config.model).to(self.device)
+        if self.training.gradient_checkpointing:
+            blocks = set_gradient_checkpointing(self.model, True)
+            self.logger.info("Enabled gradient checkpointing for %d blocks", blocks)
         total_parameters, active_parameters = parameter_counts(self.model)
         self.logger.info(
             "Model: %s total parameters, %s active parameters",
@@ -69,6 +76,8 @@ class Trainer:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.step = 0
         self.best_val = float("inf")
+        self.tokens_seen = 0
+        self._evals_without_improvement = 0
         self.train_model: torch.nn.Module = self.model
         self.writer: Any | None = None
         if self.training.tensorboard:
@@ -196,7 +205,7 @@ class Trainer:
         self.model.train()
         return total_loss / max(total_tokens, 1)
 
-    def _evaluate_and_log(self) -> None:
+    def _evaluate_and_log(self) -> bool:
         val_loss = self.evaluate()
         perplexity = math.exp(min(val_loss, 20.0))
         self.logger.info(
@@ -210,8 +219,14 @@ class Trainer:
             self.writer.add_scalar("validation/perplexity", perplexity, self.step)
         if val_loss < self.best_val:
             self.best_val = val_loss
+            self._evals_without_improvement = 0
             self._save("best.pt")
             self.logger.info("New best validation loss: %.4f", val_loss)
+        else:
+            self._evals_without_improvement += 1
+
+        patience = self.training.early_stopping_patience
+        return patience > 0 and self._evals_without_improvement >= patience
 
     def _log_step(
         self,
@@ -272,6 +287,7 @@ class Trainer:
         tokens_per_step = (
             self.training.batch_size * self.training.grad_accum_steps * self.training.seq_len
         )
+        self.tokens_seen = self.step * tokens_per_step
         self.logger.info(
             "Starting training at step %d with %s tokens per optimizer step",
             self.step,
@@ -332,6 +348,7 @@ class Trainer:
                     if self.scaler is not None:
                         self.scaler.update()
                     self.step = step + 1
+                    self.tokens_seen = self.step * tokens_per_step
                     self.logger.warning(
                         "Skipping step %d because the loss is not finite", self.step
                     )
@@ -346,6 +363,7 @@ class Trainer:
                         self.optimizer.zero_grad(set_to_none=True)
                         self.scaler.update()
                         self.step = step + 1
+                        self.tokens_seen = self.step * tokens_per_step
                         self.logger.warning(
                             "Skipping step %d because the gradient norm is not finite",
                             self.step,
@@ -360,6 +378,7 @@ class Trainer:
                     if not bool(torch.isfinite(grad_norm)):
                         self.optimizer.zero_grad(set_to_none=True)
                         self.step = step + 1
+                        self.tokens_seen = self.step * tokens_per_step
                         self.logger.warning(
                             "Skipping step %d because the gradient norm is not finite",
                             self.step,
@@ -369,7 +388,12 @@ class Trainer:
 
                 self.scheduler.step()
                 self.step = step + 1
+                self.tokens_seen = self.step * tokens_per_step
                 self._tokens_since_log += tokens_per_step
+
+                stop_requested = (
+                    self.training.max_tokens > 0 and self.tokens_seen >= self.training.max_tokens
+                )
 
                 if self.step % self.training.log_interval == 0:
                     self._log_step(
@@ -386,10 +410,29 @@ class Trainer:
                     and self.step % self.training.eval_interval == 0
                 )
                 if should_evaluate:
-                    self._evaluate_and_log()
+                    if self._evaluate_and_log():
+                        self.logger.info(
+                            "Early stopping at step %d after %d evaluations without improvement",
+                            self.step,
+                            self._evals_without_improvement,
+                        )
+                        stop_requested = True
 
                 if self.training.save_interval > 0 and self.step % self.training.save_interval == 0:
                     self._save("latest.pt")
+
+                if stop_requested:
+                    if (
+                        self.training.max_tokens > 0
+                        and self.tokens_seen >= self.training.max_tokens
+                    ):
+                        self.logger.info(
+                            "Stopping at step %d: token budget %d reached (%d tokens seen)",
+                            self.step,
+                            self.training.max_tokens,
+                            self.tokens_seen,
+                        )
+                    break
 
             if (
                 self.val_loader is not None

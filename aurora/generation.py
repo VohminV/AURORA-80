@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Sequence
+from collections.abc import Generator, Iterator, Sequence
 from typing import Any
 
 import torch
@@ -44,7 +44,136 @@ def _filter_top_p(logits: torch.Tensor, top_p: float) -> torch.Tensor:
     return filtered
 
 
-@torch.no_grad()
+def _sample_token(
+    scores: torch.Tensor,
+    temperature: float,
+    top_k: int,
+    top_p: float,
+    generator: torch.Generator | None,
+) -> int:
+    if temperature <= 0.0:
+        return int(torch.argmax(scores).item())
+    scores = scores / max(temperature, 1e-5)
+    scores = _filter_top_k(scores, top_k)
+    scores = _filter_top_p(scores, top_p)
+    probabilities = F.softmax(scores, dim=-1)
+    return int(torch.multinomial(probabilities, num_samples=1, generator=generator).item())
+
+
+def _iter_generation(
+    model: nn.Module,
+    input_ids: torch.Tensor,
+    max_new_tokens: int,
+    temperature: float,
+    top_k: int,
+    top_p: float,
+    repetition_penalty: float,
+    eos_id: int | None,
+    generator: torch.Generator | None,
+) -> Generator[list[int | None], None, tuple[list[list[int]], Any]]:
+    if input_ids.ndim != 2 or input_ids.shape[0] == 0 or input_ids.shape[1] == 0:
+        raise ValueError("generation expects input_ids with shape (batch, time)")
+    if max_new_tokens < 0:
+        raise ValueError("max_new_tokens must be non-negative")
+
+    model.eval()
+    with torch.no_grad():
+        output = model_output(model, input_ids)
+    state = output.state
+    logits = output.logits[:, -1, :].float()
+    histories = input_ids.tolist()
+    batch_size = input_ids.shape[0]
+    generated: list[list[int]] = [[] for _ in range(batch_size)]
+    finished = [False] * batch_size
+
+    for _ in range(max_new_tokens):
+        if all(finished):
+            break
+        step_tokens: list[int | None] = []
+        for index in range(batch_size):
+            if finished[index]:
+                step_tokens.append(None)
+                continue
+            scores = _apply_repetition_penalty(logits[index], histories[index], repetition_penalty)
+            token = _sample_token(scores, temperature, top_k, top_p, generator)
+            step_tokens.append(token)
+            generated[index].append(token)
+            histories[index].append(token)
+            if eos_id is not None and token == eos_id:
+                finished[index] = True
+
+        yield step_tokens
+        if all(finished):
+            break
+        step_input = torch.tensor(
+            [[token if token is not None else 0] for token in step_tokens],
+            device=input_ids.device,
+            dtype=torch.long,
+        )
+        with torch.no_grad():
+            output = model_output(model, step_input, state=state)
+        state = output.state
+        logits = output.logits[:, -1, :].float()
+
+    return generated, state
+
+
+def generate_batch(
+    model: nn.Module,
+    input_ids: torch.Tensor,
+    max_new_tokens: int,
+    temperature: float = 1.0,
+    top_k: int = 0,
+    top_p: float = 1.0,
+    repetition_penalty: float = 1.0,
+    eos_id: int | None = None,
+    generator: torch.Generator | None = None,
+) -> tuple[list[list[int]], Any]:
+    """Generate completions for a batch of prompts."""
+    iterator = _iter_generation(
+        model,
+        input_ids,
+        max_new_tokens,
+        temperature,
+        top_k,
+        top_p,
+        repetition_penalty,
+        eos_id,
+        generator,
+    )
+    while True:
+        try:
+            next(iterator)
+        except StopIteration as stop:
+            generated, state = stop.value
+            return generated, state
+
+
+def stream_generate(
+    model: nn.Module,
+    input_ids: torch.Tensor,
+    max_new_tokens: int,
+    temperature: float = 1.0,
+    top_k: int = 0,
+    top_p: float = 1.0,
+    repetition_penalty: float = 1.0,
+    eos_id: int | None = None,
+    generator: torch.Generator | None = None,
+) -> Iterator[list[int | None]]:
+    """Yield one token per batch row at a time (None marks a finished row)."""
+    yield from _iter_generation(
+        model,
+        input_ids,
+        max_new_tokens,
+        temperature,
+        top_k,
+        top_p,
+        repetition_penalty,
+        eos_id,
+        generator,
+    )
+
+
 def generate(
     model: nn.Module,
     input_ids: torch.Tensor,
@@ -58,40 +187,18 @@ def generate(
 ) -> tuple[list[int], Any]:
     if input_ids.ndim != 2 or input_ids.shape[0] != 1 or input_ids.shape[1] == 0:
         raise ValueError("generate expects input_ids with shape (1, time)")
-    if max_new_tokens < 0:
-        raise ValueError("max_new_tokens must be non-negative")
-
-    model.eval()
-    output = model_output(model, input_ids)
-    state = output.state
-    logits = output.logits[:, -1, :].float()
-    history = input_ids[0].tolist()
-    generated: list[int] = []
-
-    for _ in range(max_new_tokens):
-        scores = _apply_repetition_penalty(logits[0], history, repetition_penalty)
-        if temperature <= 0.0:
-            next_token = int(torch.argmax(scores).item())
-        else:
-            scores = scores / max(temperature, 1e-5)
-            scores = _filter_top_k(scores, top_k)
-            scores = _filter_top_p(scores, top_p)
-            probabilities = F.softmax(scores, dim=-1)
-            next_token = int(
-                torch.multinomial(probabilities, num_samples=1, generator=generator).item()
-            )
-
-        generated.append(next_token)
-        history.append(next_token)
-        if eos_id is not None and next_token == eos_id:
-            break
-
-        step_input = torch.tensor([[next_token]], device=input_ids.device, dtype=torch.long)
-        output = model_output(model, step_input, state=state)
-        state = output.state
-        logits = output.logits[:, -1, :].float()
-
-    return generated, state
+    generated, state = generate_batch(
+        model,
+        input_ids,
+        max_new_tokens,
+        temperature,
+        top_k,
+        top_p,
+        repetition_penalty,
+        eos_id,
+        generator,
+    )
+    return generated[0], state
 
 
 def build_parser() -> argparse.ArgumentParser:

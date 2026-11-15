@@ -31,3 +31,4 @@ training:
   output_dir: runs/aurora_1b
   device: auto
   dtype_amp: auto
+  gradient_checkpointing: true

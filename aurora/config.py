@@ -120,6 +120,8 @@ class TrainingConfig:
     eval_batches: int = 20
     log_interval: int = 10
     save_interval: int = 1000
+    max_tokens: int = 0
+    early_stopping_patience: int = 0
     output_dir: str = "runs/aurora_100m"
     resume: str = ""
     auto_resume: bool = False
@@ -127,6 +129,7 @@ class TrainingConfig:
     device: str = "auto"
     dtype_amp: str = "auto"
     compile: bool = False
+    gradient_checkpointing: bool = False
     tensorboard: bool = False
 
     qat_enabled: bool = False
@@ -153,6 +156,8 @@ class TrainingConfig:
             raise ValueError("adam_eps and grad_clip must be positive")
         if self.eval_interval < 0 or self.eval_batches < 0 or self.save_interval < 0:
             raise ValueError("eval and save intervals must be non-negative")
+        if self.max_tokens < 0 or self.early_stopping_patience < 0:
+            raise ValueError("max_tokens and early_stopping_patience must be non-negative")
         if self.log_interval <= 0:
             raise ValueError("log_interval must be positive")
         if self.dtype_amp not in {"auto", "bf16", "fp16", "fp32"}:

@@ -107,3 +107,77 @@ def test_auto_resume_uses_latest_checkpoint(
     assert resumed.step == continued.max_steps
     checkpoint = load_checkpoint(Path(training.output_dir) / "latest.pt")
     assert checkpoint["step"] == continued.max_steps
+
+
+def test_max_tokens_stops_training_early(
+    tmp_path: Path, tiny_experiment_config: ExperimentConfig
+) -> None:
+    train_path = tmp_path / "train.bin"
+    _write_tokens(train_path, 6)
+    training = replace(
+        tiny_experiment_config.training,
+        train_path=str(train_path),
+        val_path="",
+        max_steps=10,
+        max_tokens=32,
+        eval_interval=0,
+        save_interval=1,
+        output_dir=str(tmp_path / "budget_run"),
+    )
+    config = ExperimentConfig(model=tiny_experiment_config.model, training=training)
+    trainer = Trainer(config, MemmapTokenDataset(train_path, training.seq_len))
+    trainer.fit()
+    assert trainer.step == 1
+    checkpoint = load_checkpoint(Path(training.output_dir) / "latest.pt")
+    assert checkpoint["step"] == 1
+
+
+def test_early_stopping_patience(tmp_path: Path, tiny_experiment_config: ExperimentConfig) -> None:
+    train_path = tmp_path / "train.bin"
+    val_path = tmp_path / "val.bin"
+    _write_tokens(train_path, 7)
+    _write_tokens(val_path, 8)
+    training = replace(
+        tiny_experiment_config.training,
+        train_path=str(train_path),
+        val_path=str(val_path),
+        max_steps=10,
+        eval_interval=1,
+        early_stopping_patience=1,
+        save_interval=1,
+        output_dir=str(tmp_path / "early_stop_run"),
+    )
+    config = ExperimentConfig(model=tiny_experiment_config.model, training=training)
+    trainer = Trainer(
+        config,
+        MemmapTokenDataset(train_path, training.seq_len),
+        MemmapTokenDataset(val_path, training.seq_len),
+    )
+    trainer.best_val = 1.0
+    trainer.fit()
+    assert trainer.step == 1
+    checkpoint = load_checkpoint(Path(training.output_dir) / "latest.pt")
+    assert checkpoint["step"] == 1
+
+
+def test_gradient_checkpointing_training(
+    tmp_path: Path, tiny_experiment_config: ExperimentConfig
+) -> None:
+    train_path = tmp_path / "train.bin"
+    _write_tokens(train_path, 9)
+    training = replace(
+        tiny_experiment_config.training,
+        train_path=str(train_path),
+        val_path="",
+        max_steps=2,
+        eval_interval=0,
+        save_interval=2,
+        gradient_checkpointing=True,
+        output_dir=str(tmp_path / "checkpointed_run"),
+    )
+    config = ExperimentConfig(model=tiny_experiment_config.model, training=training)
+    trainer = Trainer(config, MemmapTokenDataset(train_path, training.seq_len))
+    assert all(block.gradient_checkpointing for block in trainer.model.blocks)
+    trainer.fit()
+    checkpoint = load_checkpoint(Path(training.output_dir) / "latest.pt")
+    assert checkpoint["step"] == 2

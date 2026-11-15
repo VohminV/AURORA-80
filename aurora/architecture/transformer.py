@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torch.utils.checkpoint import checkpoint
 
 from aurora.architecture.language_head import LanguageHead
 from aurora.architecture.layers import RMSNorm, init_module_weights
@@ -116,15 +117,35 @@ class TransformerBlock(nn.Module):
         self.up_proj = nn.Linear(config.d_model, config.ffn_hidden, bias=False)
         self.down_proj = nn.Linear(config.ffn_hidden, config.d_model, bias=False)
         self.dropout = nn.Dropout(config.dropout)
+        self.gradient_checkpointing = False
+
+    def _attention(self, hidden: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        attended, next_state = self.attn(hidden)
+        return attended, next_state.keys, next_state.values
+
+    def _feed_forward(self, hidden: torch.Tensor) -> torch.Tensor:
+        hidden = self.norm_ffn(hidden)
+        hidden = F.silu(self.gate_proj(hidden)) * self.up_proj(hidden)
+        return self.down_proj(hidden)
 
     def forward(
         self, x: torch.Tensor, state: TransformerLayerState | None = None
     ) -> tuple[torch.Tensor, TransformerLayerState]:
-        attended, next_state = self.attn(self.norm_attn(x), state)
+        attention_input = self.norm_attn(x)
+        use_checkpoint = self.gradient_checkpointing and self.training and state is None
+        if use_checkpoint:
+            attended, keys, values = checkpoint(
+                self._attention, attention_input, use_reentrant=False
+            )
+            next_state = TransformerLayerState(keys=keys, values=values)
+        else:
+            attended, next_state = self.attn(attention_input, state)
         x = x + self.dropout(attended)
-        hidden = self.norm_ffn(x)
-        hidden = F.silu(self.gate_proj(hidden)) * self.up_proj(hidden)
-        x = x + self.dropout(self.down_proj(hidden))
+
+        if use_checkpoint:
+            x = x + self.dropout(checkpoint(self._feed_forward, x, use_reentrant=False))
+        else:
+            x = x + self.dropout(self._feed_forward(x))
         return x, next_state
 
 

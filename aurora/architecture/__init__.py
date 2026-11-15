@@ -1,5 +1,9 @@
 from aurora.architecture.block import AuroraBlock
-from aurora.architecture.factory import CausalLanguageModel, build_model
+from aurora.architecture.factory import (
+    CausalLanguageModel,
+    build_model,
+    set_gradient_checkpointing,
+)
 from aurora.architecture.integration import ResidualIntegration
 from aurora.architecture.language_head import LanguageHead
 from aurora.architecture.model import AuroraModel, AuroraOutput, AuroraState
@@ -18,4 +22,5 @@ __all__ = [
     "TransformerModel",
     "TransformerState",
     "build_model",
+    "set_gradient_checkpointing",
 ]

@@ -169,6 +169,16 @@ python -m aurora.generation \
   --device cpu
 ```
 
+Батчевая и streaming-генерация доступны через API:
+
+```python
+from aurora.generation import generate_batch, stream_generate
+
+completions, state = generate_batch(model, prompts, max_new_tokens=64, temperature=0.8)
+for step in stream_generate(model, prompts, max_new_tokens=64, temperature=0.8):
+    ...  # step[i] — токен i-й строки или None, если строка завершилась
+```
+
 ### 3. Perplexity
 
 ```bash
@@ -250,6 +260,8 @@ python -m aurora.training.pretrain \
   --device cuda
 ```
 
+`--gradient-checkpointing` включает activation checkpointing, `--max-tokens` останавливает обучение по бюджету обработанных токенов, а `--early-stopping-patience` — после заданного числа validation-замеров без улучшения (требуется `--val-path`).
+
 ### Возобновление обучения
 
 ```bash
@@ -307,10 +319,11 @@ python -m aurora.training.pretrain \
 - Единый eval harness с per-domain perplexity и JSON-отчётом.
 - Ternary-квантование, упаковка 2-bit и QAT через straight-through estimator.
 - Загрузка чекпоинтов для инференса с автоматическим включением ternary-режима.
-- Генерация с temperature, top-k, top-p и repetition penalty.
+- Генерация с temperature, top-k, top-p и repetition penalty; батчевый и streaming-режимы.
+- Gradient checkpointing, early stopping и остановка по token budget.
 - Автоматический BF16/FP16 autocast на CUDA при генерации и оценке perplexity.
 - CI (lint, mypy, tests), `Makefile`, benchmark throughput/RAM/latency.
-- 65 тестов: причинность, состояния, память, маршрутизация, квантование, обучение, resume, чекпоинты, baseline и инференс.
+- 74 теста: причинность, состояния, память, маршрутизация, квантование, обучение, resume, чекпоинты, gradient checkpointing, baseline и инференс.
 
 ---
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import torch
 from torch import nn
+from torch.utils.checkpoint import checkpoint
 
 from aurora.architecture.associative_memory import AssociativeMemory
 from aurora.architecture.expert_router import MoE
@@ -52,6 +53,7 @@ class AuroraBlock(nn.Module):
         self.track_memory_losses = (
             config.memory_loss_coef > 0.0 or config.consistency_loss_coef > 0.0
         )
+        self.gradient_checkpointing = False
 
     def init_state(self, batch_size: int, device: torch.device) -> BlockState:
         return BlockState(
@@ -65,21 +67,49 @@ class AuroraBlock(nn.Module):
         if state is None:
             state = self.init_state(x.shape[0], x.device)
 
-        core_output, core_state = self.core(self.norm_core(x), state.core)
+        use_checkpoint = self.gradient_checkpointing and self.training
+
+        core_input = self.norm_core(x)
+        if use_checkpoint:
+            core_output, core_state = checkpoint(
+                self.core, core_input, state.core, use_reentrant=False
+            )
+        else:
+            core_output, core_state = self.core(core_input, state.core)
         x = self.integrate_core(x, core_output)
 
-        memory_output, memory_state, memory_losses = self.memory.forward_with_losses(
-            self.norm_memory(x), state.memory, track_losses=self.track_memory_losses
-        )
+        memory_input = self.norm_memory(x)
+        track_memory_losses = self.track_memory_losses
+
+        def memory_branch(
+            hidden: torch.Tensor, memory_state: torch.Tensor
+        ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+            output, next_state, losses = self.memory.forward_with_losses(
+                hidden, memory_state, track_losses=track_memory_losses
+            )
+            return output, next_state, losses.prediction, losses.consistency
+
+        if use_checkpoint:
+            memory_output, memory_state, prediction_loss, consistency_loss = checkpoint(
+                memory_branch, memory_input, state.memory, use_reentrant=False
+            )
+        else:
+            memory_output, memory_state, prediction_loss, consistency_loss = memory_branch(
+                memory_input, state.memory
+            )
         x = self.integrate_memory(x, memory_output)
 
-        moe_output, aux_loss = self.moe(self.norm_moe(x))
+        moe_input = self.norm_moe(x)
+        if use_checkpoint:
+            moe_output, aux_loss = checkpoint(self.moe, moe_input, use_reentrant=False)
+        else:
+            moe_output, aux_loss = self.moe(moe_input)
         x = self.integrate_moe(x, moe_output)
 
         return (
             x,
             BlockState(core=core_state, memory=memory_state),
             aux_loss,
-            memory_losses.prediction,
-            memory_losses.consistency,
+            prediction_loss,
+            consistency_loss,
         )

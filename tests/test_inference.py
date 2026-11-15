@@ -6,9 +6,10 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from aurora.config import ExperimentConfig
+from aurora.architecture.factory import build_model
+from aurora.config import ExperimentConfig, ModelConfig
 from aurora.data.dataset import MemmapTokenDataset
-from aurora.generation import generate
+from aurora.generation import generate, generate_batch, stream_generate
 from aurora.inference import load_model_from_checkpoint
 from aurora.quantization import TernaryLinear
 from aurora.training.trainer import Trainer
@@ -71,3 +72,34 @@ def test_qat_checkpoint_inference_roundtrip(
     generated, _ = generate(model, prompt, max_new_tokens=4, temperature=0.0)
     assert len(generated) == 4
     assert all(0 <= token < config.model.vocab_size for token in generated)
+
+
+def test_batched_generation_matches_single(tiny_model_config: ModelConfig) -> None:
+    model = build_model(tiny_model_config)
+    prompts = torch.tensor([[1, 2, 3], [4, 5, 6]])
+    batched, _ = generate_batch(model, prompts, max_new_tokens=5, temperature=0.0)
+    singles = [
+        generate(model, prompt.unsqueeze(0), max_new_tokens=5, temperature=0.0)[0]
+        for prompt in prompts
+    ]
+    assert batched == singles
+
+
+def test_stream_generation_matches_batched(tiny_model_config: ModelConfig) -> None:
+    model = build_model(tiny_model_config)
+    prompts = torch.tensor([[1, 2, 3], [4, 5, 6]])
+    steps = list(stream_generate(model, prompts, max_new_tokens=4, temperature=0.0))
+    assert all(len(step) == 2 for step in steps)
+    rows = [[token for step in steps if (token := step[index]) is not None] for index in range(2)]
+    batched, _ = generate_batch(model, prompts, max_new_tokens=4, temperature=0.0)
+    assert rows == batched
+
+
+def test_stream_generation_stops_on_eos(tiny_model_config: ModelConfig) -> None:
+    model = build_model(tiny_model_config)
+    prompt = torch.tensor([[1, 2, 3, 4]])
+    first, _ = generate(model, prompt, max_new_tokens=1, temperature=0.0)
+    steps = list(
+        stream_generate(model, prompt, max_new_tokens=10, temperature=0.0, eos_id=first[0])
+    )
+    assert steps == [[first[0]]]

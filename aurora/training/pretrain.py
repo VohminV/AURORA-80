@@ -24,6 +24,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--tensorboard", action="store_true")
     parser.add_argument("--no-compile", action="store_true")
+    parser.add_argument("--gradient-checkpointing", action="store_true")
+    parser.add_argument("--max-tokens", type=int, default=None)
+    parser.add_argument("--early-stopping-patience", type=int, default=None)
     parser.add_argument("--log-level", default="INFO")
     return parser
 
@@ -47,6 +50,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         "max_steps",
         "device",
         "seed",
+        "max_tokens",
+        "early_stopping_patience",
     ):
         value = getattr(args, field_name)
         if value is not None:
@@ -57,6 +62,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         overrides["auto_resume"] = True
     if args.no_compile:
         overrides["compile"] = False
+    if args.gradient_checkpointing:
+        overrides["gradient_checkpointing"] = True
     if overrides:
         config = ExperimentConfig(
             model=config.model,

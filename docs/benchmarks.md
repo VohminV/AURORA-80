@@ -140,6 +140,8 @@ learns and that checkpoints, resume, evaluation and inference work.
   CPU, but `inductor` is blocked because this environment lacks `Python.h`.
 - Reducing MoE recompilations under `torch.compile` (dynamic expert group sizes
   hit the recompile limit).
+- CUDA memory/throughput measurements for gradient checkpointing. Correctness is
+  covered by CPU tests, but the memory saving has not been measured on a GPU.
 - Multi-seed runs and confidence intervals.
 - A trained 64k tokenizer and a real RU/EN/code corpus.
 - A trained Transformer baseline under the same data, tokens and compute; only
