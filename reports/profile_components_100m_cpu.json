@@ -1,0 +1,37 @@
+{
+  "config": "configs/aurora_100m.yaml",
+  "architecture": "aurora",
+  "device": "cpu",
+  "seq_len": 32,
+  "batch_size": 1,
+  "steps": 2,
+  "warmup_steps": 1,
+  "torch_threads": 4,
+  "total": {
+    "forward_seconds": 0.21827920050009197,
+    "backward_seconds": 0.4485108294998099,
+    "step_seconds": 1.5012014654998893,
+    "tokens_per_second": 21.316259499749574
+  },
+  "branches": {
+    "AssociativeMemory": {
+      "forward_seconds": 0.049514391999764484,
+      "backward_seconds": 0.0,
+      "forward_share": 0.22683971668543665,
+      "backward_share": 0.0
+    },
+    "RecurrentCore": {
+      "forward_seconds": 0.13000349000003553,
+      "backward_seconds": 0.25659076050055774,
+      "forward_share": 0.5955834990332978,
+      "backward_share": 0.5720949052372134
+    },
+    "MoE": {
+      "forward_seconds": 0.023167263999766874,
+      "backward_seconds": 0.05163077900033386,
+      "forward_share": 0.10613592108954564,
+      "backward_share": 0.11511601416160619
+    }
+  },
+  "note": "Forward timings are measured per module. Backward timings are measured through module hooks; AssociativeMemory uses a direct method call and is therefore only timed in the forward pass."
+}

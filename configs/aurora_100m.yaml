@@ -12,6 +12,8 @@ model:
   expert_hidden: 1024
   aux_loss_coef: 0.01
   router_z_loss_coef: 0.001
+  memory_loss_coef: 0.01
+  consistency_loss_coef: 0.01
   dropout: 0.0
   layer_scale_init: 0.1
   tie_embeddings: true

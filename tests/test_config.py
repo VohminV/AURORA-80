@@ -29,6 +29,29 @@ def test_invalid_top_k_is_rejected() -> None:
         ModelConfig(n_experts=4, top_k=5)
 
 
+def test_negative_auxiliary_loss_coefficients_are_rejected() -> None:
+    with pytest.raises(ValueError):
+        ModelConfig(memory_loss_coef=-0.1)
+    with pytest.raises(ValueError):
+        ModelConfig(consistency_loss_coef=-0.1)
+
+
+def test_invalid_architecture_and_attention_shape_are_rejected() -> None:
+    with pytest.raises(ValueError):
+        ModelConfig(architecture="mamba")
+    with pytest.raises(ValueError):
+        ModelConfig(d_model=32, attention_heads=5)
+    with pytest.raises(ValueError):
+        ModelConfig(d_model=30, attention_heads=6)
+
+
+def test_transformer_config_loads() -> None:
+    config = load_config("configs/transformer_100m.yaml")
+    assert config.model.architecture == "transformer"
+    assert config.model.d_model == 768
+    assert config.model.n_layers == 11
+
+
 def test_80b_config_is_in_target_range() -> None:
     config = load_config("configs/aurora_80b.yaml")
     with torch.device("meta"):

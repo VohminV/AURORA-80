@@ -18,6 +18,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--val-path", default=None)
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--resume", default=None)
+    parser.add_argument("--auto-resume", action="store_true")
     parser.add_argument("--max-steps", type=int, default=None)
     parser.add_argument("--device", default=None)
     parser.add_argument("--seed", type=int, default=None)
@@ -52,6 +53,8 @@ def main(argv: Sequence[str] | None = None) -> None:
             overrides[field_name] = value
     if args.tensorboard:
         overrides["tensorboard"] = True
+    if args.auto_resume:
+        overrides["auto_resume"] = True
     if args.no_compile:
         overrides["compile"] = False
     if overrides:

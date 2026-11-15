@@ -49,6 +49,9 @@ class AuroraBlock(nn.Module):
         self.integrate_moe = ResidualIntegration(
             config.d_model, config.layer_scale_init, config.dropout
         )
+        self.track_memory_losses = (
+            config.memory_loss_coef > 0.0 or config.consistency_loss_coef > 0.0
+        )
 
     def init_state(self, batch_size: int, device: torch.device) -> BlockState:
         return BlockState(
@@ -58,17 +61,25 @@ class AuroraBlock(nn.Module):
 
     def forward(
         self, x: torch.Tensor, state: BlockState | None = None
-    ) -> tuple[torch.Tensor, BlockState, torch.Tensor]:
+    ) -> tuple[torch.Tensor, BlockState, torch.Tensor, torch.Tensor, torch.Tensor]:
         if state is None:
             state = self.init_state(x.shape[0], x.device)
 
         core_output, core_state = self.core(self.norm_core(x), state.core)
         x = self.integrate_core(x, core_output)
 
-        memory_output, memory_state = self.memory(self.norm_memory(x), state.memory)
+        memory_output, memory_state, memory_losses = self.memory.forward_with_losses(
+            self.norm_memory(x), state.memory, track_losses=self.track_memory_losses
+        )
         x = self.integrate_memory(x, memory_output)
 
         moe_output, aux_loss = self.moe(self.norm_moe(x))
         x = self.integrate_moe(x, moe_output)
 
-        return x, BlockState(core=core_state, memory=memory_state), aux_loss
+        return (
+            x,
+            BlockState(core=core_state, memory=memory_state),
+            aux_loss,
+            memory_losses.prediction,
+            memory_losses.consistency,
+        )

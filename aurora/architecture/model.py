@@ -1,22 +1,16 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import torch
 from torch import nn
 
 from aurora.architecture.block import AuroraBlock
 from aurora.architecture.language_head import LanguageHead
 from aurora.architecture.layers import init_module_weights, scale_residual_outputs
+from aurora.architecture.output import LanguageModelOutput
 from aurora.architecture.state import AuroraState
 from aurora.config import ModelConfig
 
-
-@dataclass
-class AuroraOutput:
-    logits: torch.Tensor
-    aux_loss: torch.Tensor
-    state: AuroraState
+AuroraOutput = LanguageModelOutput
 
 
 class AuroraModel(nn.Module):
@@ -54,19 +48,27 @@ class AuroraModel(nn.Module):
 
         x = self.dropout(self.embed(input_ids))
         aux_loss = torch.zeros((), device=x.device, dtype=torch.float32)
+        memory_loss = torch.zeros((), device=x.device, dtype=torch.float32)
+        consistency_loss = torch.zeros((), device=x.device, dtype=torch.float32)
         block_states = state.blocks if state is not None else [None] * len(self.blocks)
         next_states = []
 
         for block, block_state in zip(self.blocks, block_states, strict=True):
             assert isinstance(block, AuroraBlock)
-            x, next_state, block_aux_loss = block(x, block_state)
+            x, next_state, block_aux_loss, block_memory_loss, block_consistency_loss = block(
+                x, block_state
+            )
             aux_loss = aux_loss + block_aux_loss.float()
+            memory_loss = memory_loss + block_memory_loss.float()
+            consistency_loss = consistency_loss + block_consistency_loss.float()
             next_states.append(next_state)
 
         logits = self.lm_head(x)
         return AuroraOutput(
             logits=logits,
             aux_loss=aux_loss,
+            memory_loss=memory_loss,
+            consistency_loss=consistency_loss,
             state=AuroraState(blocks=next_states),
         )
 

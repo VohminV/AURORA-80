@@ -6,14 +6,14 @@ from pathlib import Path
 
 import torch
 
-from aurora.architecture.model import AuroraModel
+from aurora.architecture.factory import build_model
 from aurora.config import load_config
 from aurora.utils import human_int, parameter_counts
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Count AURORA parameters without allocating weights"
+        description="Count model parameters without allocating weights"
     )
     parser.add_argument("--config", default="configs/aurora_100m.yaml")
     return parser
@@ -23,7 +23,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
     config = load_config(Path(args.config))
     with torch.device("meta"):
-        model = AuroraModel(config.model)
+        model = build_model(config.model)
     total, active = parameter_counts(model)
     ratio = 100.0 * active / max(total, 1)
     print(f"total:  {total:>15,} ({human_int(total)})")

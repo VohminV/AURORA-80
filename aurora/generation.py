@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Sequence
+from typing import Any
 
 import torch
 import torch.nn.functional as F
+from torch import nn
 
-from aurora.architecture.model import AuroraModel
-from aurora.architecture.state import AuroraState
-from aurora.inference import inference_autocast, load_model_from_checkpoint
+from aurora.inference import inference_autocast, load_model_from_checkpoint, model_output
 from aurora.tokenizer import load_tokenizer
 from aurora.utils import resolve_device
 
@@ -46,7 +46,7 @@ def _filter_top_p(logits: torch.Tensor, top_p: float) -> torch.Tensor:
 
 @torch.no_grad()
 def generate(
-    model: AuroraModel,
+    model: nn.Module,
     input_ids: torch.Tensor,
     max_new_tokens: int,
     temperature: float = 1.0,
@@ -55,14 +55,14 @@ def generate(
     repetition_penalty: float = 1.0,
     eos_id: int | None = None,
     generator: torch.Generator | None = None,
-) -> tuple[list[int], AuroraState]:
+) -> tuple[list[int], Any]:
     if input_ids.ndim != 2 or input_ids.shape[0] != 1 or input_ids.shape[1] == 0:
         raise ValueError("generate expects input_ids with shape (1, time)")
     if max_new_tokens < 0:
         raise ValueError("max_new_tokens must be non-negative")
 
     model.eval()
-    output = model(input_ids)
+    output = model_output(model, input_ids)
     state = output.state
     logits = output.logits[:, -1, :].float()
     history = input_ids[0].tolist()
@@ -87,7 +87,7 @@ def generate(
             break
 
         step_input = torch.tensor([[next_token]], device=input_ids.device, dtype=torch.long)
-        output = model(step_input, state=state)
+        output = model_output(model, step_input, state=state)
         state = output.state
         logits = output.logits[:, -1, :].float()
 

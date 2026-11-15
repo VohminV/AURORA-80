@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import pickle
 from pathlib import Path
 
@@ -8,6 +10,7 @@ import pytest
 import torch
 
 from aurora.data.dataset import MemmapTokenDataset
+from aurora.data.prepare import FileFingerprint, iter_text_chunks
 from aurora.data.prepare import main as prepare_main
 from aurora.tokenizer import ByteTokenizer, SentencePieceTokenizer
 from aurora.tokenizer.train_tokenizer import main as train_tokenizer_main
@@ -78,6 +81,97 @@ def test_prepare_fallback_validation_split(tmp_path: Path) -> None:
     assert np.array_equal(np.concatenate([train, val]), expected)
 
 
+def test_streaming_chunks_decode_multibyte_characters(tmp_path: Path) -> None:
+    text = "Первая строка\nВторая строка\nТретья строка\n"
+    path = tmp_path / "corpus.txt"
+    path.write_bytes(text.encode("utf-8"))
+    fingerprint = FileFingerprint()
+    chunks = list(iter_text_chunks(path, chunk_size=1, encoding="utf-8", fingerprint=fingerprint))
+    assert "".join(chunks) == text
+    assert fingerprint.bytes == len(text.encode("utf-8"))
+    assert fingerprint.sha256 == hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def test_prepare_streaming_matches_reference_and_writes_manifest(tmp_path: Path) -> None:
+    text = "AURORA learns language.\nОна изучает код.\n\ndef add(a, b):\n    return a + b\n" * 40
+    text_path = tmp_path / "corpus.txt"
+    text_path.write_text(text, encoding="utf-8")
+    output_dir = tmp_path / "processed"
+    prepare_main(
+        [
+            "--input",
+            str(text_path),
+            "--output-dir",
+            str(output_dir),
+            "--tokenizer",
+            "byte",
+            "--val-fraction",
+            "0.2",
+            "--chunk-size",
+            "17",
+        ]
+    )
+
+    expected = np.asarray(ByteTokenizer().encode(text, add_eos=True), dtype=np.uint16)
+    train = np.fromfile(output_dir / "train.bin", dtype=np.uint16)
+    val = np.fromfile(output_dir / "val.bin", dtype=np.uint16)
+    assert np.array_equal(np.concatenate([train, val]), expected)
+    assert 0 < len(val) < len(expected)
+    assert len(val) == pytest.approx(0.2 * len(expected), abs=len(expected) // 20)
+
+    manifest = json.loads((output_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["format_version"] == 1
+    assert manifest["dtype"] == "uint16"
+    assert manifest["tokenizer"]["kind"] == "byte"
+    assert manifest["inputs"][0]["sha256"] == hashlib.sha256(text.encode("utf-8")).hexdigest()
+    assert manifest["inputs"][0]["tokens"] == len(expected)
+    assert manifest["outputs"]["train"]["tokens"] == len(train)
+    assert manifest["outputs"]["val"]["tokens"] == len(val)
+    assert (
+        manifest["outputs"]["train"]["sha256"]
+        == hashlib.sha256((output_dir / "train.bin").read_bytes()).hexdigest()
+    )
+    assert (
+        manifest["outputs"]["val"]["sha256"]
+        == hashlib.sha256((output_dir / "val.bin").read_bytes()).hexdigest()
+    )
+
+
+def test_prepare_handles_multiple_files_and_cleans_temporary_files(tmp_path: Path) -> None:
+    first = tmp_path / "first.txt"
+    second = tmp_path / "second.txt"
+    first.write_text("First document.\n" * 10, encoding="utf-8")
+    second.write_text("Second document.\n" * 10, encoding="utf-8")
+    output_dir = tmp_path / "processed"
+    prepare_main(
+        [
+            "--input",
+            str(first),
+            str(second),
+            "--output-dir",
+            str(output_dir),
+            "--tokenizer",
+            "byte",
+            "--chunk-size",
+            "23",
+        ]
+    )
+    assert not (output_dir / "train.bin.tmp").exists()
+    assert not (output_dir / "val.bin.tmp").exists()
+    train = np.fromfile(output_dir / "train.bin", dtype=np.uint16)
+    val = np.fromfile(output_dir / "val.bin", dtype=np.uint16)
+    expected = np.asarray(
+        ByteTokenizer().encode(first.read_text(), add_eos=True)
+        + ByteTokenizer().encode(second.read_text(), add_eos=True),
+        dtype=np.uint16,
+    )
+    assert len(train) + len(val) == len(expected)
+    assert np.array_equal(
+        np.sort(np.concatenate([train, val])),
+        np.sort(expected),
+    )
+
+
 def test_memmap_rejects_short_file(tmp_path: Path) -> None:
     path = tmp_path / "short.bin"
     np.asarray([1, 2, 3], dtype=np.uint16).tofile(path)
@@ -106,3 +200,45 @@ def test_sentencepiece_tokenizer(tmp_path: Path) -> None:
     text = "AURORA learns Russian and English."
     ids = tokenizer.encode(text)
     assert tokenizer.decode(ids).strip() == text
+
+
+def test_token_stats_for_byte_tokenizer(tmp_path: Path) -> None:
+    from aurora.tokenizer.stats import compute_token_stats
+
+    text = "Hello world. Привет мир.\nprint('hi')\n"
+    path = tmp_path / "ru_en_code.txt"
+    path.write_text(text, encoding="utf-8")
+    result = compute_token_stats(path, ByteTokenizer(), chunk_size=7)
+    encoded = text.encode("utf-8")
+    assert result.bytes == len(encoded)
+    assert result.tokens == len(encoded)
+    assert result.characters == len(text)
+    assert result.bytes_per_token == pytest.approx(1.0)
+    assert result.tokens_per_char > 1.0
+    assert result.tokens_per_word > 1.0
+
+
+def test_token_stats_cli_writes_report(tmp_path: Path) -> None:
+    from aurora.tokenizer.stats import main as stats_main
+
+    path = tmp_path / "corpus.txt"
+    path.write_text("AURORA tests tokenizer statistics.\n" * 20, encoding="utf-8")
+    output = tmp_path / "reports" / "tokenizer_stats.json"
+    stats_main(
+        [
+            "--input",
+            str(path),
+            "--tokenizer",
+            "byte",
+            "--chunk-size",
+            "13",
+            "--output",
+            str(output),
+        ]
+    )
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["tokenizer"]["kind"] == "byte"
+    assert report["tokenizer"]["vocab_size"] == 260
+    assert report["chunk_size_bytes"] == 13
+    assert report["files"][0]["tokens"] == len(path.read_bytes())
+    assert report["files"][0]["bytes_per_token"] == pytest.approx(1.0)

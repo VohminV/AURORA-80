@@ -4,7 +4,7 @@
 
 Исследовательский проект собственной языковой модели: без Transformer и self-attention, с многоуровневой рекуррентной динамикой, ассоциативной памятью и адаптивной маршрутизацией экспертов.
 
-В репозитории реализован рабочий прототип на PyTorch: архитектура, обучение, токенизация, подготовка данных, ternary-квантование (QAT), генерация, оценка perplexity и тесты.
+В репозитории реализован рабочий прототип на PyTorch: архитектура, обучение, токенизация, потоковая подготовка данных, ternary-квантование (QAT), генерация, оценка perplexity, единый eval harness, Transformer baseline для честного сравнения и тесты.
 
 > **Статус:** AURORA-100M — исследовательский прототип. Архитектура ещё не доказала превосходство над Transformer. Целевая модель AURORA-80B требует отдельной вычислительной инфраструктуры.
 
@@ -88,10 +88,11 @@ M_t = λ_t M_{t-1} + η_t * k_t (v_t - M_{t-1}^T k_t)^T / (ε + ||k_t||²)
 ### Функция потерь
 
 ```
-L = L_LM + α * L_balance + β * L_z + QAT-регуляризация через STE
+L = L_LM + α * L_balance + β * L_z + γ * L_memory + δ * L_consistency
+    + QAT-регуляризация через STE
 ```
 
-`L_LM` — cross-entropy на следующий токен. Балансировка и z-loss уже включены в конфигурацию.
+`L_LM` — cross-entropy на следующий токен. `L_memory` — ошибка предсказания значения до записи в память, `L_consistency` — ошибка чтения сразу после записи. Оба aux-лосса включаются коэффициентами `memory_loss_coef` и `consistency_loss_coef`; в 100M-конфиге они равны `0.01`.
 
 ---
 
@@ -101,6 +102,7 @@ L = L_LM + α * L_balance + β * L_z + QAT-регуляризация через
 | --- | ---: | ---: | --- |
 | `configs/smoke.yaml` | 0.29M | 0.19M | Проверка пайплайна |
 | `configs/aurora_100m.yaml` | 105.73M | 49.10M | Первый прототип |
+| `configs/transformer_100m.yaml` | 106.28M | 106.28M | Transformer baseline |
 | `configs/aurora_1b.yaml` | 929.49M | 325.51M | Масштабирование |
 | `configs/aurora_80b.yaml` | 80.49B | 11.52B | Целевая конфигурация |
 
@@ -178,6 +180,19 @@ python -m aurora.benchmarks.perplexity \
   --device cpu
 ```
 
+### 4. Единый eval harness
+
+```bash
+python -m aurora.benchmarks.evaluate \
+  --checkpoint runs/smoke/best.pt \
+  --data ru=data/processed/ru_val.bin \
+  --data en=data/processed/en_val.bin \
+  --data code=data/processed/code_val.bin \
+  --output reports/eval.json
+```
+
+Отчёт содержит loss и perplexity по каждому домену, число токенов, шаг чекпоинта, архитектуру и SHA-256 из `manifest.json`, если он есть рядом с `.bin`.
+
 ---
 
 ## Обучение на реальном корпусе
@@ -192,6 +207,18 @@ python -m aurora.tokenizer.train_tokenizer \
   --model-type bpe
 ```
 
+### Оценка токенизатора
+
+```bash
+python -m aurora.tokenizer.stats \
+  --input corpus_ru.txt corpus_en.txt corpus_code.txt \
+  --tokenizer sentencepiece \
+  --tokenizer-model tokenizer/aurora_64k.model \
+  --output reports/tokenizer_stats.json
+```
+
+Отчёт содержит bytes/token, chars/token, tokens/word и абсолютные счётчики по каждому файлу. Это позволяет сравнить fertility для RU/EN/code до запуска обучения.
+
 ### Подготовка данных
 
 ```bash
@@ -202,6 +229,8 @@ python -m aurora.data.prepare \
   --tokenizer-model tokenizer/aurora_64k.model \
   --dtype uint16
 ```
+
+`prepare.py` читает входные файлы чанками (`--chunk-size`, по умолчанию 1 MiB), декодирует UTF-8 инкрементально и пишет `manifest.json` с SHA-256 входов и выходов. Весь корпус в RAM не загружается.
 
 ### Запуск AURORA-100M
 
@@ -237,6 +266,24 @@ python -m aurora.training.pretrain --config configs/aurora_100m_qat.yaml
 
 По умолчанию QAT включается на шаге, указанном в `qat_start_step`. Формат AURORA-TQ использует веса `{-s, 0, +s}` и групповые FP16-масштабы. При группе 128 теоретическая стоимость — около `2.125 bit/weight` (примерно 21.25 GB для 80B без накладных расходов).
 
+### Transformer baseline
+
+```bash
+python -m aurora.training.pretrain --config configs/transformer_100m.yaml
+```
+
+Decoder-only Transformer с RoPE, SwiGLU и KV-cache реализован для сравнения при равных данных, токенах и compute. Его total parameters (106.28M) близки к AURORA-100M (105.73M), но активные параметры отличаются: у AURORA 49.10M active из-за MoE. Любое сравнение должно явно указывать, используется total или active compute. Baseline использует тот же trainer, eval harness и формат чекпоинтов.
+
+### Авто-resume и проверка чекпоинтов
+
+```bash
+python -m aurora.training.pretrain \
+  --config configs/aurora_100m.yaml \
+  --auto-resume
+```
+
+`--auto-resume` подхватывает `latest.pt` из `output_dir`, если он существует. При загрузке любой чекпоинт проверяется на обязательные ключи, версию формата и NaN/Inf в весах.
+
 ---
 
 ## Что реализовано
@@ -250,15 +297,20 @@ python -m aurora.training.pretrain --config configs/aurora_100m_qat.yaml
 - Cosine scheduler с warmup.
 - BF16/FP16 autocast, GradScaler для FP16.
 - Gradient accumulation, clipping и пропуск нефинитных шагов.
-- Атомарные чекпоинты, resume, best/latest.
+- Атомарные чекпоинты, resume, авто-resume, best/latest и проверка целостности тензоров.
+- `L_memory` и `L_consistency` для ассоциативной памяти.
 - Validation loss и perplexity.
-- SentencePiece и byte-level tokenizer.
+- SentencePiece и byte-level tokenizer; `aurora-tokenizer-stats` для fertility/compression.
+- Потоковая подготовка данных с SHA-256 manifest.
 - Memmap-датасет для токенизированных корпусов.
+- Transformer baseline с RoPE и KV-cache, совместимый с trainer/inference/eval.
+- Единый eval harness с per-domain perplexity и JSON-отчётом.
 - Ternary-квантование, упаковка 2-bit и QAT через straight-through estimator.
 - Загрузка чекпоинтов для инференса с автоматическим включением ternary-режима.
 - Генерация с temperature, top-k, top-p и repetition penalty.
 - Автоматический BF16/FP16 autocast на CUDA при генерации и оценке perplexity.
-- 38 тестов: причинность, состояния, память, маршрутизация, квантование, обучение, resume, QAT и инференс.
+- CI (lint, mypy, tests), `Makefile`, benchmark throughput/RAM/latency.
+- 65 тестов: причинность, состояния, память, маршрутизация, квантование, обучение, resume, чекпоинты, baseline и инференс.
 
 ---
 
@@ -276,7 +328,10 @@ AURORA-80/
 │   │   ├── layers.py
 │   │   ├── block.py
 │   │   ├── state.py
-│   │   └── model.py
+│   │   ├── model.py
+│   │   ├── transformer.py
+│   │   ├── output.py
+│   │   └── factory.py
 │   ├── training/
 │   │   ├── pretrain.py
 │   │   ├── trainer.py
@@ -285,7 +340,8 @@ AURORA-80/
 │   │   └── checkpoint.py
 │   ├── tokenizer/
 │   │   ├── tokenizer.py
-│   │   └── train_tokenizer.py
+│   │   ├── train_tokenizer.py
+│   │   └── stats.py
 │   ├── data/
 │   │   ├── prepare.py
 │   │   └── dataset.py
@@ -293,14 +349,24 @@ AURORA-80/
 │   │   ├── ternary.py
 │   │   └── qat.py
 │   ├── benchmarks/
-│   │   └── perplexity.py
+│   │   ├── perplexity.py
+│   │   └── evaluate.py
 │   ├── config.py
 │   ├── generation.py
 │   ├── inference.py
 │   └── utils.py
 ├── configs/
+├── docs/
+│   ├── benchmarks.md
+│   ├── formats.md
+│   └── adr/
 ├── scripts/
+│   ├── benchmark.py
+│   ├── count_parameters.py
+│   └── profile_components.py
 ├── tests/
+├── .github/workflows/ci.yml
+├── Makefile
 ├── pyproject.toml
 └── README.md
 ```
@@ -322,13 +388,23 @@ mypy aurora
 
 ## Ограничения прототипа
 
-- Рекуррентное ядро и память обрабатывают токены последовательно. Это упрощает верификацию, но ограничивает скорость обучения. Следующий шаг — chunkwise parallel scan и/или `torch.compile`.
-- Вспомогательные `L_memory` и `L_consistency` из исходной концепции пока не реализованы: память обучается через `L_LM`.
+- Рекуррентное ядро и память обрабатывают токены последовательно. Это упрощает верификацию, но ограничивает скорость обучения. Следующий шаг — chunkwise parallel scan и оптимизированные ядра.
+- `L_memory` и `L_consistency` реализованы, но их коэффициенты не подобраны, ablation не проведён.
+- Transformer baseline реализован, но честное сравнение на реальном корпусе при равных данных и compute ещё не проводилось.
+- Все замеры throughput/latency/памяти сделаны на CPU. CUDA AMP и `torch.compile` в этом окружении не проверены.
 - 80B-конфигурация не обучалась и не запускалась. Это расчётная конфигурация.
 - Экспертная система распределена по слоям; стратегия разделяемых экспертов для 80B требует отдельных экспериментов.
-- `prepare.py` читает корпус и хранит токены в памяти. Для корпусов масштаба 80B нужен потоковый пайплайн с записью в memmap.
+- Дедупликация, фильтрация качества, удаление PII и data mixture ещё не реализованы; подготовка данных потоковая, но без этих этапов.
 - Нет распределённого обучения, C++/CUDA runtime и собственного формата сериализации AURORA-TQ.
 - Пропускная способность RAM и предсказательная загрузка экспертов для 8 GB VRAM ещё не реализованы.
+
+---
+
+## Документация
+
+- `docs/benchmarks.md` — замеры и команды воспроизведения.
+- `docs/formats.md` — формат чекпоинтов, manifest и AURORA-TQ.
+- `docs/adr/` — architecture decision records.
 
 ---
 

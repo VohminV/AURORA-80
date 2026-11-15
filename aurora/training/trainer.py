@@ -11,7 +11,7 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 
-from aurora.architecture.model import AuroraModel
+from aurora.architecture.factory import CausalLanguageModel, build_model
 from aurora.config import ExperimentConfig
 from aurora.quantization import convert_to_ternary
 from aurora.training.checkpoint import load_checkpoint, save_checkpoint
@@ -44,7 +44,7 @@ class Trainer:
             torch.cuda.set_device(self.device)
         set_seed(self.training.seed)
 
-        self.model = AuroraModel(config.model).to(self.device)
+        self.model = build_model(config.model).to(self.device)
         total_parameters, active_parameters = parameter_counts(self.model)
         self.logger.info(
             "Model: %s total parameters, %s active parameters",
@@ -182,7 +182,7 @@ class Trainer:
             inputs = inputs.to(self.device, non_blocking=True)
             targets = targets.to(self.device, non_blocking=True)
             with self._autocast():
-                logits = self.model(inputs).logits
+                logits = cast(CausalLanguageModel, self.model)(inputs).logits
                 loss = F.cross_entropy(
                     logits.reshape(-1, self.config.model.vocab_size),
                     targets.reshape(-1),
@@ -213,18 +213,28 @@ class Trainer:
             self._save("best.pt")
             self.logger.info("New best validation loss: %.4f", val_loss)
 
-    def _log_step(self, lm_loss: float, aux_loss: float, grad_norm: float) -> None:
+    def _log_step(
+        self,
+        lm_loss: float,
+        aux_loss: float,
+        grad_norm: float,
+        memory_loss: float = 0.0,
+        consistency_loss: float = 0.0,
+    ) -> None:
         elapsed = time.perf_counter() - self._last_log_time
         tokens_per_second = self._tokens_since_log / max(elapsed, 1e-9)
         learning_rate = self.scheduler.get_last_lr()[0]
         tokens_seen = self.step * self.training.batch_size * self.training.grad_accum_steps
         tokens_seen *= self.training.seq_len
         self.logger.info(
-            "step %d/%d | lm %.4f | aux %.4f | lr %.2e | grad %.3f | %.0f tok/s | %.2fM tokens",
+            "step %d/%d | lm %.4f | aux %.4f | mem %.4f | cons %.4f | lr %.2e | "
+            "grad %.3f | %.0f tok/s | %.2fM tokens",
             self.step,
             self.training.max_steps,
             lm_loss,
             aux_loss,
+            memory_loss,
+            consistency_loss,
             learning_rate,
             grad_norm,
             tokens_per_second,
@@ -233,15 +243,27 @@ class Trainer:
         if self.writer is not None:
             self.writer.add_scalar("train/lm_loss", lm_loss, self.step)
             self.writer.add_scalar("train/aux_loss", aux_loss, self.step)
+            self.writer.add_scalar("train/memory_loss", memory_loss, self.step)
+            self.writer.add_scalar("train/consistency_loss", consistency_loss, self.step)
             self.writer.add_scalar("train/lr", learning_rate, self.step)
             self.writer.add_scalar("train/grad_norm", grad_norm, self.step)
             self.writer.add_scalar("train/tokens_per_second", tokens_per_second, self.step)
         self._last_log_time = time.perf_counter()
         self._tokens_since_log = 0
 
-    def fit(self) -> None:
+    def _resolve_resume_path(self) -> str | Path | None:
         if self.training.resume:
-            self._resume(self.training.resume)
+            return self.training.resume
+        if self.training.auto_resume:
+            candidate = self.output_dir / "latest.pt"
+            if candidate.is_file():
+                return candidate
+        return None
+
+    def fit(self) -> None:
+        resume_path = self._resolve_resume_path()
+        if resume_path is not None:
+            self._resume(resume_path)
         self._maybe_enable_qat(self.step)
         self._set_train_model()
         self.model.train()
@@ -266,6 +288,8 @@ class Trainer:
                 step_finite = True
                 lm_loss_sum = 0.0
                 aux_loss_sum = 0.0
+                memory_loss_sum = 0.0
+                consistency_loss_sum = 0.0
 
                 for _ in range(self.training.grad_accum_steps):
                     try:
@@ -277,12 +301,19 @@ class Trainer:
                     targets = targets.to(self.device, non_blocking=True)
 
                     with self._autocast():
-                        output = self.train_model(inputs)
+                        output = cast(CausalLanguageModel, self.train_model)(inputs)
                         lm_loss = F.cross_entropy(
                             output.logits.reshape(-1, self.config.model.vocab_size),
                             targets.reshape(-1),
                         )
                         loss = lm_loss + output.aux_loss
+                        if self.config.model.memory_loss_coef > 0.0:
+                            loss = loss + self.config.model.memory_loss_coef * output.memory_loss
+                        if self.config.model.consistency_loss_coef > 0.0:
+                            loss = (
+                                loss
+                                + self.config.model.consistency_loss_coef * output.consistency_loss
+                            )
 
                     if not bool(torch.isfinite(loss)):
                         step_finite = False
@@ -293,6 +324,8 @@ class Trainer:
                         scaled_loss.backward()
                     lm_loss_sum += float(lm_loss.detach())
                     aux_loss_sum += float(output.aux_loss.detach())
+                    memory_loss_sum += float(output.memory_loss.detach())
+                    consistency_loss_sum += float(output.consistency_loss.detach())
 
                 if not step_finite:
                     self.optimizer.zero_grad(set_to_none=True)
@@ -343,6 +376,8 @@ class Trainer:
                         lm_loss=lm_loss_sum / self.training.grad_accum_steps,
                         aux_loss=aux_loss_sum / self.training.grad_accum_steps,
                         grad_norm=float(grad_norm),
+                        memory_loss=memory_loss_sum / self.training.grad_accum_steps,
+                        consistency_loss=consistency_loss_sum / self.training.grad_accum_steps,
                     )
 
                 should_evaluate = (

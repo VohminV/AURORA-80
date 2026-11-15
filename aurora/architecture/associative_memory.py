@@ -1,12 +1,32 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
 from aurora.architecture.layers import RMSNorm
+
+
+@dataclass
+class MemoryLosses:
+    """Auxiliary memory objectives.
+
+    ``prediction`` is the one-step key-value prediction error before the write:
+    the memory is rewarded for anticipating the value associated with a key.
+    ``consistency`` is the write-read error after the write: the memory is
+    rewarded for storing the association it just observed.
+    """
+
+    prediction: torch.Tensor
+    consistency: torch.Tensor
+
+
+def zero_memory_losses(device: torch.device) -> MemoryLosses:
+    zero = torch.zeros((), device=device, dtype=torch.float32)
+    return MemoryLosses(prediction=zero, consistency=zero)
 
 
 class AssociativeMemory(nn.Module):
@@ -59,6 +79,15 @@ class AssociativeMemory(nn.Module):
     def forward(
         self, x: torch.Tensor, state: torch.Tensor | None = None
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        output, next_state, _ = self.forward_with_losses(x, state, track_losses=False)
+        return output, next_state
+
+    def forward_with_losses(
+        self,
+        x: torch.Tensor,
+        state: torch.Tensor | None = None,
+        track_losses: bool = True,
+    ) -> tuple[torch.Tensor, torch.Tensor, MemoryLosses]:
         if x.ndim != 3:
             raise ValueError("AssociativeMemory expects input of shape (batch, time, d_model)")
         batch_size, seq_len, _ = x.shape
@@ -81,6 +110,7 @@ class AssociativeMemory(nn.Module):
         decay = torch.sigmoid(self.decay_proj(x).float()).permute(0, 2, 1)
         write = torch.sigmoid(self.write_proj(x).float()).permute(0, 2, 1)
 
+        losses = zero_memory_losses(x.device)
         reads = []
         for token_index in range(seq_len):
             query_token = query[:, :, token_index]
@@ -92,13 +122,22 @@ class AssociativeMemory(nn.Module):
 
             prediction = (key_token.unsqueeze(-1) * state).sum(dim=-2)
             error = value_token - prediction
+            if track_losses:
+                losses.prediction = losses.prediction + error.square().mean()
             normalization = key_token.square().sum(dim=-1, keepdim=True) + self.epsilon
             rate = (write[:, :, token_index].unsqueeze(-1) / normalization).unsqueeze(-1)
             state = decay[:, :, token_index].unsqueeze(-1).unsqueeze(
                 -1
             ) * state + rate * key_token.unsqueeze(-1) * error.unsqueeze(-2)
+            if track_losses:
+                stored = (key_token.unsqueeze(-1) * state).sum(dim=-2)
+                losses.consistency = losses.consistency + (value_token - stored).square().mean()
+
+        if track_losses:
+            losses.prediction = losses.prediction / seq_len
+            losses.consistency = losses.consistency / seq_len
 
         memory_output = torch.stack(reads, dim=2)
         memory_output = memory_output.permute(0, 2, 1, 3).reshape(batch_size, seq_len, -1)
         memory_output = self.out_norm(memory_output.to(x.dtype))
-        return self.dropout(self.out_proj(memory_output)), state
+        return self.dropout(self.out_proj(memory_output)), state, losses

@@ -19,9 +19,13 @@ def _build_dataclass(cls: type[T], data: dict[str, Any], name: str) -> T:
 
 @dataclass(frozen=True)
 class ModelConfig:
+    architecture: str = "aurora"
     vocab_size: int = 32768
     d_model: int = 512
     n_layers: int = 6
+
+    attention_heads: int = 8
+    ffn_hidden: int = 2048
 
     n_levels: int = 4
     d_state: int = 128
@@ -37,6 +41,8 @@ class ModelConfig:
     aux_loss_coef: float = 0.01
     router_z_loss_coef: float = 0.001
     router_jitter: float = 0.0
+    memory_loss_coef: float = 0.0
+    consistency_loss_coef: float = 0.0
 
     dropout: float = 0.0
     norm_eps: float = 1e-6
@@ -45,10 +51,18 @@ class ModelConfig:
     tie_embeddings: bool = True
 
     def __post_init__(self) -> None:
+        if self.architecture not in {"aurora", "transformer"}:
+            raise ValueError("architecture must be one of aurora, transformer")
         if self.vocab_size < 4:
             raise ValueError("vocab_size must be at least 4")
         if self.d_model <= 0 or self.n_layers <= 0:
             raise ValueError("d_model and n_layers must be positive")
+        if self.attention_heads <= 0 or self.d_model % self.attention_heads != 0:
+            raise ValueError("d_model must be divisible by attention_heads")
+        if (self.d_model // self.attention_heads) % 2 != 0:
+            raise ValueError("attention head dimension must be even for RoPE")
+        if self.ffn_hidden <= 0:
+            raise ValueError("ffn_hidden must be positive")
         if self.n_levels <= 0 or self.d_state <= 0:
             raise ValueError("n_levels and d_state must be positive")
         if self.memory_heads <= 0:
@@ -69,7 +83,12 @@ class ModelConfig:
             raise ValueError("memory_epsilon must be positive")
         if self.norm_eps <= 0.0:
             raise ValueError("norm_eps must be positive")
-        if self.aux_loss_coef < 0.0 or self.router_z_loss_coef < 0.0:
+        if (
+            self.aux_loss_coef < 0.0
+            or self.router_z_loss_coef < 0.0
+            or self.memory_loss_coef < 0.0
+            or self.consistency_loss_coef < 0.0
+        ):
             raise ValueError("Loss coefficients must be non-negative")
         if not 0.0 <= self.router_jitter < 1.0:
             raise ValueError("router_jitter must be in [0, 1)")
@@ -103,6 +122,7 @@ class TrainingConfig:
     save_interval: int = 1000
     output_dir: str = "runs/aurora_100m"
     resume: str = ""
+    auto_resume: bool = False
     seed: int = 42
     device: str = "auto"
     dtype_amp: str = "auto"

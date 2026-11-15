@@ -62,3 +62,44 @@ def test_memory_backward() -> None:
     output.sum().backward()
     assert x.grad is not None
     assert torch.isfinite(x.grad).all()
+
+
+def test_memory_auxiliary_losses_are_finite_and_differentiable() -> None:
+    torch.manual_seed(0)
+    memory = AssociativeMemory(d_model=32, n_heads=2)
+    x = torch.randn(2, 5, 32, requires_grad=True)
+    output, _, losses = memory.forward_with_losses(x)
+    assert output.shape == (2, 5, 32)
+    assert losses.prediction.ndim == 0
+    assert losses.consistency.ndim == 0
+    assert float(losses.prediction.detach()) > 0.0
+    assert float(losses.consistency.detach()) > 0.0
+    (output.square().mean() + losses.prediction + losses.consistency).backward()
+    assert x.grad is not None
+    assert torch.isfinite(x.grad).all()
+
+
+def test_memory_consistency_rewards_exact_write() -> None:
+    memory = AssociativeMemory(d_model=4, n_heads=1, epsilon=1e-8)
+    with torch.no_grad():
+        identity = torch.eye(4)
+        memory.q_proj.weight.copy_(identity)
+        memory.k_proj.weight.copy_(identity)
+        memory.v_proj.weight.copy_(identity)
+        memory.decay_proj.weight.zero_()
+        memory.decay_proj.bias.fill_(20.0)
+        memory.write_proj.weight.zero_()
+        memory.write_proj.bias.fill_(20.0)
+
+    token = torch.tensor([[[1.0, 0.0, 0.0, 0.0]]])
+    _, _, losses = memory.forward_with_losses(token)
+    assert float(losses.prediction.detach()) > 0.0
+    assert float(losses.consistency.detach()) < 1e-6
+
+
+def test_memory_losses_tracking_can_be_disabled() -> None:
+    memory = AssociativeMemory(d_model=32, n_heads=2)
+    x = torch.randn(2, 5, 32)
+    _, _, losses = memory.forward_with_losses(x, track_losses=False)
+    assert float(losses.prediction) == 0.0
+    assert float(losses.consistency) == 0.0

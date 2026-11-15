@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 import torch
 import torch.nn.functional as F
@@ -24,6 +26,36 @@ def test_model_forward_and_backward(tiny_model_config: ModelConfig) -> None:
         output.logits.reshape(-1, tiny_model_config.vocab_size), targets.reshape(-1)
     )
     (lm_loss + output.aux_loss).backward()
+    assert model.embed.weight.grad is not None
+    assert torch.isfinite(model.embed.weight.grad).all()
+
+
+def test_model_auxiliary_memory_losses(tiny_model_config: ModelConfig) -> None:
+    config = replace(
+        tiny_model_config,
+        memory_loss_coef=0.01,
+        consistency_loss_coef=0.01,
+    )
+    torch.manual_seed(0)
+    model = AuroraModel(config)
+    input_ids = torch.randint(0, config.vocab_size, (2, 6))
+    output = model(input_ids)
+    assert output.memory_loss.ndim == 0
+    assert output.consistency_loss.ndim == 0
+    assert float(output.memory_loss.detach()) > 0.0
+    assert float(output.consistency_loss.detach()) > 0.0
+
+    lm_loss = F.cross_entropy(
+        output.logits.reshape(-1, config.vocab_size),
+        input_ids.reshape(-1),
+    )
+    total = (
+        lm_loss
+        + output.aux_loss
+        + config.memory_loss_coef * output.memory_loss
+        + config.consistency_loss_coef * output.consistency_loss
+    )
+    total.backward()
     assert model.embed.weight.grad is not None
     assert torch.isfinite(model.embed.weight.grad).all()
 

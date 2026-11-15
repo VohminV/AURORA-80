@@ -1,0 +1,51 @@
+{
+  "label": "",
+  "created_utc": "2026-11-15T05:38:53.873497+00:00",
+  "config": "configs/transformer_100m.yaml",
+  "hardware": {
+    "platform": "Linux-7.0.0-43-generic-x86_64-with-glibc2.39",
+    "processor": "x86_64",
+    "cpu_count": 8,
+    "torch_threads": 4,
+    "python": "3.12.3",
+    "torch": "2.15.0+cpu",
+    "device": "cpu"
+  },
+  "parameters": {
+    "total": 106284288,
+    "active": 106284288
+  },
+  "settings": {
+    "seq_len": 512,
+    "batch_size": 1,
+    "train_steps": 1,
+    "inference_steps": 2,
+    "generation_tokens": 2,
+    "compile": false,
+    "dtype_amp": "auto"
+  },
+  "train": {
+    "steps": 1,
+    "tokens": 512,
+    "seconds": 1.87583908900001,
+    "tokens_per_second": 272.9445201362883,
+    "seconds_per_step": 1.87583908900001,
+    "peak_rss_mb": 2267.8125
+  },
+  "inference": {
+    "steps": 2,
+    "tokens": 1024,
+    "seconds": 0.6938880180000524,
+    "tokens_per_second": 1475.7424446546975,
+    "milliseconds_per_token": 0.6776250175781762,
+    "peak_rss_mb": 2267.8125
+  },
+  "generation": {
+    "new_tokens": 2,
+    "prompt_tokens": 32,
+    "seconds": 0.0709369600001537,
+    "tokens_per_second": 28.19404722158472,
+    "milliseconds_per_token": 35.46848000007685,
+    "peak_rss_mb": 2267.8125
+  }
+}

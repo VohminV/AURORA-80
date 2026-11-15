@@ -42,6 +42,7 @@ def test_training_checkpoint_and_resume(
     assert latest.is_file()
     assert best.is_file()
     checkpoint = load_checkpoint(latest)
+    assert checkpoint["format_version"] == 1
     assert checkpoint["step"] == training.max_steps
     assert checkpoint["qat_active"] is False
 
@@ -78,3 +79,31 @@ def test_qat_activation(tmp_path: Path, tiny_experiment_config: ExperimentConfig
     assert checkpoint["step"] == training.max_steps
     assert checkpoint["qat_active"] is True
     assert any(key.endswith(".linear.weight") for key in checkpoint["model"])
+
+
+def test_auto_resume_uses_latest_checkpoint(
+    tmp_path: Path, tiny_experiment_config: ExperimentConfig
+) -> None:
+    train_path = tmp_path / "train.bin"
+    _write_tokens(train_path, 4)
+    training = replace(
+        tiny_experiment_config.training,
+        train_path=str(train_path),
+        val_path="",
+        output_dir=str(tmp_path / "auto_resume_run"),
+        eval_interval=0,
+    )
+    config = ExperimentConfig(model=tiny_experiment_config.model, training=training)
+    dataset = MemmapTokenDataset(train_path, training.seq_len)
+    Trainer(config, dataset).fit()
+
+    continued = replace(
+        training,
+        max_steps=training.max_steps + 1,
+        auto_resume=True,
+    )
+    resumed = Trainer(ExperimentConfig(model=config.model, training=continued), dataset)
+    resumed.fit()
+    assert resumed.step == continued.max_steps
+    checkpoint = load_checkpoint(Path(training.output_dir) / "latest.pt")
+    assert checkpoint["step"] == continued.max_steps
