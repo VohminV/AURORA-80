@@ -255,9 +255,24 @@ python -m aurora.data.prepare \
   --dtype uint16
 ```
 
-`prepare.py` читает входные файлы чанками (`--chunk-size`, по умолчанию 1 MiB), декодирует UTF-8 инкрементально и пишет `manifest.json` с SHA-256 входов и выходов. Весь корпус в RAM не загружается.
+`prepare.py` читает входные файлы чанками (`--chunk-size`, по умолчанию 1 MiB), декодирует UTF-8 инкрементально и пишет `manifest.json` с SHA-256 входов, выходов и токенизатора. Поле `dataset_version` — детерминированный content hash от содержимого, split-настроек и идентичности токенизатора; повторная подготовка тех же данных даёт ту же версию. Весь корпус в RAM не загружается.
 
 `--split-mode document` назначает в train/val/test целые документы (разделитель — пустая строка) и не разрезает их между сплитами. `--test-fraction` создаёт дополнительный `test.bin`; сумма val/test долей должна быть меньше 1. В document-режиме нужны документы для каждого непустого сплита, иначе подготовка завершится ошибкой вместо нарушения границ.
+
+### Data card
+
+```bash
+python -m aurora.data.card \
+  --manifest data/processed/manifest.json \
+  --output data/processed/DATA_CARD.md \
+  --name "AURORA RU/EN/code" \
+  --description "Tokenized pretraining corpus" \
+  --language ru --language en --language code \
+  --license "TBD" \
+  --verify
+```
+
+Карточка содержит `dataset_version`, таблицы источников и сплитов с SHA-256, настройки подготовки и токенизатора. `--verify` дополнительно пересчитывает размеры и checksums `train.bin`/`val.bin`/`test.bin`; `read_manifest` отвергает manifest с изменёнными метаданными, потому что версия не совпадает с content hash.
 
 ### Смешивание доменов
 
@@ -357,7 +372,8 @@ python -m aurora.training.pretrain \
 - `L_memory` и `L_consistency` для ассоциативной памяти.
 - Validation loss и perplexity.
 - SentencePiece и byte-level tokenizer; `aurora-tokenizer-stats` для fertility/compression.
-- Потоковая подготовка данных с SHA-256 manifest.
+- Потоковая подготовка данных с SHA-256 manifest и content-addressed `dataset_version`.
+- Генерация data card из manifest с проверкой checksums (`aurora-data-card`).
 - Memmap-датасет для токенизированных корпусов и смешивание доменов с весами.
 - Transformer baseline с RoPE и KV-cache, совместимый с trainer/inference/eval.
 - Единый eval harness с per-domain perplexity и JSON-отчётом.
@@ -368,7 +384,7 @@ python -m aurora.training.pretrain \
 - Gradient checkpointing, early stopping и остановка по token budget.
 - Автоматический BF16/FP16 autocast на CUDA при генерации и оценке perplexity.
 - CI (lint, mypy, tests), `Makefile`, benchmark throughput/RAM/latency.
-- 96 тестов: причинность, состояния, память, маршрутизация, квантование, обучение, resume, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, baseline и инференс.
+- 100 тестов: причинность, состояния, память, маршрутизация, квантование, обучение, resume, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, baseline и инференс.
 
 ---
 

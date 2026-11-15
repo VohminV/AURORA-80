@@ -22,7 +22,7 @@
 - [x] Git-репозиторий, SSH remote, первый коммит отправлен в `origin/main`.
 - [x] Конфиги `smoke`, `100m`, `100m_qat`, `transformer_100m`, `1b`, `80b`.
 - [x] Расчёт параметров: 100M — 105.73M total / 49.10M active; 1B — 929.49M / 325.51M; 80B — 80.49B / 11.52B; Transformer-100M baseline — 106.28M.
-- [x] 96 тестов; `ruff`, `mypy` проходят.
+- [x] 100 тестов; `ruff`, `mypy` проходят.
 - [x] Smoke-обучение, resume, генерация, perplexity, QAT-обучение и QAT-inference.
 - [x] Демонстрационный корпус и скрипт подсчёта параметров.
 - [x] CI, `Makefile`, потоковая подготовка данных с manifest.
@@ -107,7 +107,7 @@
 - [x] `P1` Потоковый `prepare.py` без загрузки всего корпуса в RAM.
 - [x] `P1` Data mixture с весами доменов (`train_paths`/`train_weights`).
 - [x] `P1` Train/val/test split без пересечения документов (`--split-mode document`, `--test-fraction`).
-- [ ] `P1` Data card и версионирование датасета.
+- [x] `P1` Data card и версионирование датасета (`dataset_version`, `aurora-data-card`, `--verify`).
 - [ ] `P2` Синтетические данные и code/math-специализация.
 
 ### 1.5 QAT и сжатие
@@ -139,7 +139,7 @@
 
 ### 1.7 Качество и документация
 
-- [x] `P0` 96 тестов на архитектуру, память, роутер, QAT, обучение, данные, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ и inference.
+- [x] `P0` 100 тестов на архитектуру, память, роутер, QAT, обучение, данные, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card и inference.
 - [x] `P0` `ruff`, `mypy`, инструкции запуска.
 - [x] `P0` README с ограничениями и научной базой.
 - [x] `P0` Зафиксировать baseline-метрики smoke-модели.

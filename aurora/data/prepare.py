@@ -12,6 +12,7 @@ from pathlib import Path
 
 import numpy as np
 
+from aurora.data.version import compute_dataset_version, sha256_file
 from aurora.tokenizer import BaseTokenizer, load_tokenizer
 
 DEFAULT_CHUNK_SIZE = 1024 * 1024
@@ -253,22 +254,11 @@ def _move_tail_to_validation(
     return moved
 
 
-def _hash_file(path: Path, chunk_size: int = DEFAULT_CHUNK_SIZE) -> str:
-    hasher = hashlib.sha256()
-    with path.open("rb") as handle:
-        while True:
-            chunk = handle.read(chunk_size)
-            if not chunk:
-                break
-            hasher.update(chunk)
-    return hasher.hexdigest()
-
-
 def _output_entry(path: Path, tokens: int) -> dict[str, object]:
     return {
         "path": path.name,
         "bytes": path.stat().st_size,
-        "sha256": _hash_file(path),
+        "sha256": sha256_file(path),
         "tokens": tokens,
     }
 
@@ -298,6 +288,16 @@ def main(argv: Sequence[str] | None = None) -> None:
     tokenizer = load_tokenizer(args.tokenizer, args.tokenizer_model)
     if args.dtype == "uint16" and tokenizer.vocab_size > 65536:
         raise SystemExit("Tokenizer vocabulary is too large for uint16; use --dtype uint32")
+    tokenizer_entry: dict[str, object] = {
+        "kind": args.tokenizer,
+        "model": args.tokenizer_model or None,
+        "model_sha256": None,
+        "vocab_size": tokenizer.vocab_size,
+    }
+    if args.tokenizer_model:
+        tokenizer_model_path = Path(args.tokenizer_model)
+        tokenizer_entry["model_bytes"] = tokenizer_model_path.stat().st_size
+        tokenizer_entry["model_sha256"] = sha256_file(tokenizer_model_path)
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -405,11 +405,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         manifest: dict[str, object] = {
             "format_version": 1,
             "created_utc": datetime.now(timezone.utc).isoformat(),
-            "tokenizer": {
-                "kind": args.tokenizer,
-                "model": args.tokenizer_model or None,
-                "vocab_size": tokenizer.vocab_size,
-            },
+            "tokenizer": tokenizer_entry,
             "encoding": args.encoding,
             "dtype": args.dtype,
             "split_mode": args.split_mode,
@@ -419,6 +415,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             "inputs": input_entries,
             "outputs": outputs,
         }
+        manifest["dataset_version"] = compute_dataset_version(manifest)
         _write_manifest(output_dir / "manifest.json", manifest)
         completed = True
     finally:

@@ -48,7 +48,8 @@ Properties:
 | --- | --- |
 | `format_version` | Manifest schema version (currently `1`) |
 | `created_utc` | Creation timestamp |
-| `tokenizer` | Kind, model path and vocabulary size |
+| `dataset_version` | Content-addressed `sha256:...` version of the prepared dataset |
+| `tokenizer` | Kind, model path, model SHA-256/bytes and vocabulary size |
 | `encoding`, `dtype`, `split_mode`, `val_fraction`, `test_fraction`, `chunk_size_bytes` | Preparation settings |
 | `inputs` | Per-file path, byte size, SHA-256 and token count |
 | `outputs` | Per-split (`train`, `val`, optional `test`) file name, byte size, SHA-256 and token count |
@@ -56,6 +57,18 @@ Properties:
 The `.bin` files are raw little-endian integer arrays (`uint16` or `uint32`),
 without a header. Their shape is `(num_tokens,)` and the dtype is recorded in the
 manifest and the training config.
+
+`dataset_version` hashes the input/output hashes, token counts, split settings
+and tokenizer identity (kind, vocabulary size and model SHA-256), excluding paths
+and timestamps. Re-running preparation on the same content therefore produces
+the same version. `aurora.data.version.read_manifest` recomputes the version and
+rejects edited metadata; `verify_manifest_files` rechecks split sizes and
+checksums. `aurora-data-card` renders a Markdown data card from a manifest:
+
+```bash
+python -m aurora.data.card --manifest data/processed/manifest.json \
+  --output data/processed/DATA_CARD.md --name "AURORA corpus" --verify
+```
 
 `split_mode="document"` splits on blank lines, appends EOS after every document
 and assigns whole documents to one split. `split_mode="token"` keeps the original
