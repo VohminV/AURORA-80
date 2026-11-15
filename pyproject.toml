@@ -29,6 +29,7 @@ aurora-tokenizer-stats = "aurora.tokenizer.stats:main"
 aurora-generate = "aurora.generation:main"
 aurora-perplexity = "aurora.benchmarks.perplexity:main"
 aurora-evaluate = "aurora.benchmarks.evaluate:main"
+aurora-serve = "aurora.server:main"
 
 [tool.setuptools.packages.find]
 include = ["aurora*"]

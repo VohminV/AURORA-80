@@ -49,13 +49,17 @@ Properties:
 | `format_version` | Manifest schema version (currently `1`) |
 | `created_utc` | Creation timestamp |
 | `tokenizer` | Kind, model path and vocabulary size |
-| `encoding`, `dtype`, `val_fraction`, `chunk_size_bytes` | Preparation settings |
+| `encoding`, `dtype`, `split_mode`, `val_fraction`, `test_fraction`, `chunk_size_bytes` | Preparation settings |
 | `inputs` | Per-file path, byte size, SHA-256 and token count |
-| `outputs` | Per-split file name, byte size, SHA-256 and token count |
+| `outputs` | Per-split (`train`, `val`, optional `test`) file name, byte size, SHA-256 and token count |
 
 The `.bin` files are raw little-endian integer arrays (`uint16` or `uint32`),
 without a header. Their shape is `(num_tokens,)` and the dtype is recorded in the
 manifest and the training config.
+
+`split_mode="document"` splits on blank lines, appends EOS after every document
+and assigns whole documents to one split. `split_mode="token"` keeps the original
+byte-offset split and may cut inside a document.
 
 ## AURORA-TQ (ternary weights)
 

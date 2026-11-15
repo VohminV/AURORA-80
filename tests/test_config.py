@@ -59,3 +59,14 @@ def test_80b_config_is_in_target_range() -> None:
     total, active = parameter_counts(model)
     assert 75_000_000_000 <= total <= 85_000_000_000
     assert active < total
+
+
+def test_mixture_config_loads() -> None:
+    config = load_config("configs/aurora_100m_mixture.yaml")
+    assert config.training.train_path == ""
+    assert config.training.train_paths == (
+        "data/processed/ru/train.bin",
+        "data/processed/en/train.bin",
+        "data/processed/code/train.bin",
+    )
+    assert config.training.train_weights == (0.6, 0.3, 0.1)

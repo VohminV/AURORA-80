@@ -179,7 +179,22 @@ for step in stream_generate(model, prompts, max_new_tokens=64, temperature=0.8):
     ...  # step[i] — токен i-й строки или None, если строка завершилась
 ```
 
-### 3. Perplexity
+### 3. HTTP API
+
+```bash
+python -m aurora.server --checkpoint runs/smoke/best.pt --port 8000
+```
+
+```bash
+curl -s http://127.0.0.1:8000/health
+curl -s http://127.0.0.1:8000/generate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "AURORA", "max_new_tokens": 32, "temperature": 0.8, "top_k": 20, "top_p": 0.95}'
+```
+
+Сервер по умолчанию слушает `127.0.0.1` и не имеет аутентификации: не открывайте его в публичную сеть. Endpoint `/generate` принимает один prompt и возвращает `text`, `tokens`, `prompt_tokens` и `finish_reason`; тело запроса ограничено 1 MiB, prompt — `--max-prompt-tokens` (по умолчанию 4096). Батчевый и streaming-режимы доступны через Python API.
+
+### 4. Perplexity
 
 ```bash
 python -m aurora.benchmarks.perplexity \
@@ -190,7 +205,7 @@ python -m aurora.benchmarks.perplexity \
   --device cpu
 ```
 
-### 4. Единый eval harness
+### 5. Единый eval harness
 
 ```bash
 python -m aurora.benchmarks.evaluate \
@@ -241,6 +256,24 @@ python -m aurora.data.prepare \
 ```
 
 `prepare.py` читает входные файлы чанками (`--chunk-size`, по умолчанию 1 MiB), декодирует UTF-8 инкрементально и пишет `manifest.json` с SHA-256 входов и выходов. Весь корпус в RAM не загружается.
+
+`--split-mode document` назначает в train/val/test целые документы (разделитель — пустая строка) и не разрезает их между сплитами. `--test-fraction` создаёт дополнительный `test.bin`; сумма val/test долей должна быть меньше 1. В document-режиме нужны документы для каждого непустого сплита, иначе подготовка завершится ошибкой вместо нарушения границ.
+
+### Смешивание доменов
+
+Каждый домен готовится отдельным запуском `prepare.py`, после чего веса задаются в конфиге:
+
+```yaml
+training:
+  train_paths:
+    - data/processed/ru/train.bin
+    - data/processed/en/train.bin
+    - data/processed/code/train.bin
+  train_weights: [0.6, 0.3, 0.1]
+  val_path: data/processed/val.bin
+```
+
+Готовый пример: `configs/aurora_100m_mixture.yaml`. Сэмплер тянет примеры с replacement, поэтому ожидаемая доля домена за эпоху равна нормализованному весу. `train_path` и `train_paths` взаимоисключающие.
 
 ### Запуск AURORA-100M
 
@@ -314,16 +347,17 @@ python -m aurora.training.pretrain \
 - Validation loss и perplexity.
 - SentencePiece и byte-level tokenizer; `aurora-tokenizer-stats` для fertility/compression.
 - Потоковая подготовка данных с SHA-256 manifest.
-- Memmap-датасет для токенизированных корпусов.
+- Memmap-датасет для токенизированных корпусов и смешивание доменов с весами.
 - Transformer baseline с RoPE и KV-cache, совместимый с trainer/inference/eval.
 - Единый eval harness с per-domain perplexity и JSON-отчётом.
 - Ternary-квантование, упаковка 2-bit и QAT через straight-through estimator.
 - Загрузка чекпоинтов для инференса с автоматическим включением ternary-режима.
 - Генерация с temperature, top-k, top-p и repetition penalty; батчевый и streaming-режимы.
+- HTTP API для генерации (`aurora-serve`) и защита от слишком больших запросов.
 - Gradient checkpointing, early stopping и остановка по token budget.
 - Автоматический BF16/FP16 autocast на CUDA при генерации и оценке perplexity.
 - CI (lint, mypy, tests), `Makefile`, benchmark throughput/RAM/latency.
-- 74 теста: причинность, состояния, память, маршрутизация, квантование, обучение, resume, чекпоинты, gradient checkpointing, baseline и инференс.
+- 89 тестов: причинность, состояния, память, маршрутизация, квантование, обучение, resume, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, baseline и инференс.
 
 ---
 
@@ -357,7 +391,8 @@ AURORA-80/
 │   │   └── stats.py
 │   ├── data/
 │   │   ├── prepare.py
-│   │   └── dataset.py
+│   │   ├── dataset.py
+│   │   └── mixture.py
 │   ├── quantization/
 │   │   ├── ternary.py
 │   │   └── qat.py
@@ -367,6 +402,7 @@ AURORA-80/
 │   ├── config.py
 │   ├── generation.py
 │   ├── inference.py
+│   ├── server.py
 │   └── utils.py
 ├── configs/
 ├── docs/

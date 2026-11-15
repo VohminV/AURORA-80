@@ -7,6 +7,7 @@ import numpy as np
 
 from aurora.config import ExperimentConfig
 from aurora.data.dataset import MemmapTokenDataset
+from aurora.data.mixture import build_token_mixture
 from aurora.training.checkpoint import load_checkpoint
 from aurora.training.trainer import Trainer
 
@@ -179,5 +180,31 @@ def test_gradient_checkpointing_training(
     trainer = Trainer(config, MemmapTokenDataset(train_path, training.seq_len))
     assert all(block.gradient_checkpointing for block in trainer.model.blocks)
     trainer.fit()
+    checkpoint = load_checkpoint(Path(training.output_dir) / "latest.pt")
+    assert checkpoint["step"] == 2
+
+
+def test_training_with_weighted_mixture(
+    tmp_path: Path, tiny_experiment_config: ExperimentConfig
+) -> None:
+    paths = [tmp_path / "ru.bin", tmp_path / "en.bin"]
+    for index, path in enumerate(paths):
+        _write_tokens(path, 10 + index)
+    dataset, sampler, _ = build_token_mixture(
+        paths, [0.75, 0.25], seq_len=tiny_experiment_config.training.seq_len, seed=3
+    )
+    training = replace(
+        tiny_experiment_config.training,
+        train_path="",
+        train_paths=tuple(str(path) for path in paths),
+        train_weights=(0.75, 0.25),
+        val_path="",
+        max_steps=2,
+        eval_interval=0,
+        save_interval=2,
+        output_dir=str(tmp_path / "mixture_run"),
+    )
+    config = ExperimentConfig(model=tiny_experiment_config.model, training=training)
+    Trainer(config, dataset, train_sampler=sampler).fit()
     checkpoint = load_checkpoint(Path(training.output_dir) / "latest.pt")
     assert checkpoint["step"] == 2

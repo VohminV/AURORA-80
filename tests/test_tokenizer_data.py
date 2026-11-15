@@ -10,7 +10,7 @@ import pytest
 import torch
 
 from aurora.data.dataset import MemmapTokenDataset
-from aurora.data.prepare import FileFingerprint, iter_text_chunks
+from aurora.data.prepare import FileFingerprint, iter_text_chunks, iter_text_documents
 from aurora.data.prepare import main as prepare_main
 from aurora.tokenizer import ByteTokenizer, SentencePieceTokenizer
 from aurora.tokenizer.train_tokenizer import main as train_tokenizer_main
@@ -242,3 +242,131 @@ def test_token_stats_cli_writes_report(tmp_path: Path) -> None:
     assert report["chunk_size_bytes"] == 13
     assert report["files"][0]["tokens"] == len(path.read_bytes())
     assert report["files"][0]["bytes_per_token"] == pytest.approx(1.0)
+
+
+def test_iter_text_documents_preserves_input(tmp_path: Path) -> None:
+    text = "First document.\nLine two.\n\n\nSecond document.\n\nThird.\n"
+    path = tmp_path / "documents.txt"
+    path.write_text(text, encoding="utf-8")
+    fingerprint = FileFingerprint()
+    documents = list(iter_text_documents(path, 5, "utf-8", fingerprint))
+    assert "".join(document for document, _, _ in documents) == text
+    assert fingerprint.bytes == len(text.encode("utf-8"))
+
+
+def test_prepare_document_split_without_overlap(tmp_path: Path) -> None:
+    documents = [
+        f"Document {index} has a unique marker {index}.\nSecond line {index}.\n"
+        for index in range(10)
+    ]
+    text = "\n".join(documents)
+    text_path = tmp_path / "corpus.txt"
+    text_path.write_text(text, encoding="utf-8")
+    output_dir = tmp_path / "processed"
+    prepare_main(
+        [
+            "--input",
+            str(text_path),
+            "--output-dir",
+            str(output_dir),
+            "--tokenizer",
+            "byte",
+            "--split-mode",
+            "document",
+            "--val-fraction",
+            "0.3",
+            "--test-fraction",
+            "0.2",
+            "--chunk-size",
+            "13",
+        ]
+    )
+
+    tokenizer = ByteTokenizer()
+    expected_documents = [
+        tokenizer.encode(document, add_eos=True)
+        for document, _, _ in iter_text_documents(text_path, 7, "utf-8")
+    ]
+    train = np.fromfile(output_dir / "train.bin", dtype=np.uint16)
+    val = np.fromfile(output_dir / "val.bin", dtype=np.uint16)
+    test = np.fromfile(output_dir / "test.bin", dtype=np.uint16)
+    partitions = [train, val, test]
+    assert len(train) > 0 and len(val) > 0 and len(test) > 0
+    assert len(train) + len(val) + len(test) == sum(
+        len(document) for document in expected_documents
+    )
+
+    for document in expected_documents:
+        needle = np.asarray(document, dtype=np.uint16)
+        matches = sum(
+            any(
+                np.array_equal(partition[start : start + len(needle)], needle)
+                for start in range(len(partition) - len(needle) + 1)
+            )
+            for partition in partitions
+        )
+        assert matches == 1
+
+    manifest = json.loads((output_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["split_mode"] == "document"
+    assert manifest["val_fraction"] == 0.3
+    assert manifest["test_fraction"] == 0.2
+    assert manifest["outputs"]["train"]["tokens"] == len(train)
+    assert manifest["outputs"]["val"]["tokens"] == len(val)
+    assert manifest["outputs"]["test"]["tokens"] == len(test)
+
+
+def test_prepare_token_split_with_test_fraction(tmp_path: Path) -> None:
+    text = "AURORA train validation and test splits.\n" * 60
+    text_path = tmp_path / "corpus.txt"
+    text_path.write_text(text, encoding="utf-8")
+    output_dir = tmp_path / "processed"
+    prepare_main(
+        [
+            "--input",
+            str(text_path),
+            "--output-dir",
+            str(output_dir),
+            "--tokenizer",
+            "byte",
+            "--val-fraction",
+            "0.2",
+            "--test-fraction",
+            "0.1",
+            "--chunk-size",
+            "17",
+        ]
+    )
+    expected = np.asarray(ByteTokenizer().encode(text, add_eos=True), dtype=np.uint16)
+    train = np.fromfile(output_dir / "train.bin", dtype=np.uint16)
+    val = np.fromfile(output_dir / "val.bin", dtype=np.uint16)
+    test = np.fromfile(output_dir / "test.bin", dtype=np.uint16)
+    assert np.array_equal(np.concatenate([train, val, test]), expected)
+    assert len(train) > len(val) > len(test) > 0
+    manifest = json.loads((output_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["split_mode"] == "token"
+    assert manifest["test_fraction"] == 0.1
+    assert (
+        manifest["outputs"]["test"]["sha256"]
+        == hashlib.sha256((output_dir / "test.bin").read_bytes()).hexdigest()
+    )
+
+
+def test_prepare_document_split_requires_validation_documents(tmp_path: Path) -> None:
+    text_path = tmp_path / "corpus.txt"
+    text_path.write_text("A single document without separators.\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        prepare_main(
+            [
+                "--input",
+                str(text_path),
+                "--output-dir",
+                str(tmp_path / "processed"),
+                "--tokenizer",
+                "byte",
+                "--split-mode",
+                "document",
+                "--val-fraction",
+                "0.2",
+            ]
+        )

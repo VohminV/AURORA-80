@@ -68,9 +68,9 @@ tokenizer/*.json
 !tokenizer/config*.json
 
 # Data
-data/
-datasets/
-corpus/
+/data/
+/datasets/
+/corpus/
 *.jsonl
 *.parquet
 *.arrow

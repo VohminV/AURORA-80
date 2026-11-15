@@ -9,7 +9,7 @@ from typing import Any, cast
 
 import torch
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, Sampler
 
 from aurora.architecture.factory import (
     CausalLanguageModel,
@@ -39,6 +39,7 @@ class Trainer:
         config: ExperimentConfig,
         train_dataset: Dataset,
         val_dataset: Dataset | None = None,
+        train_sampler: Sampler[int] | None = None,
     ) -> None:
         self.config = config
         self.training = config.training
@@ -67,7 +68,7 @@ class Trainer:
             torch.amp.GradScaler("cuda", enabled=True) if self.amp_dtype == torch.float16 else None
         )
 
-        self.train_loader = self._build_loader(train_dataset, shuffle=True)
+        self.train_loader = self._build_loader(train_dataset, shuffle=True, sampler=train_sampler)
         self.val_loader = (
             self._build_loader(val_dataset, shuffle=False) if val_dataset is not None else None
         )
@@ -96,10 +97,27 @@ class Trainer:
             return nullcontext()
         return torch.autocast(device_type=self.device.type, dtype=self.amp_dtype)
 
-    def _build_loader(self, dataset: Dataset, shuffle: bool) -> DataLoader:
+    def _build_loader(
+        self,
+        dataset: Dataset,
+        shuffle: bool,
+        sampler: Sampler[int] | None = None,
+    ) -> DataLoader:
         generator = torch.Generator()
         generator.manual_seed(self.training.seed)
         dataset_length = len(cast(Any, dataset))
+        if sampler is not None:
+            return DataLoader(
+                dataset,
+                batch_size=self.training.batch_size,
+                sampler=sampler,
+                drop_last=dataset_length >= self.training.batch_size,
+                num_workers=self.training.num_workers,
+                pin_memory=self.device.type == "cuda",
+                persistent_workers=self.training.num_workers > 0,
+                worker_init_fn=seed_worker,
+                generator=generator,
+            )
         return DataLoader(
             dataset,
             batch_size=self.training.batch_size,

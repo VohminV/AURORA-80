@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Any, TypeVar, cast
@@ -99,6 +100,8 @@ class ModelConfig:
 @dataclass(frozen=True)
 class TrainingConfig:
     train_path: str = ""
+    train_paths: tuple[str, ...] = ()
+    train_weights: tuple[float, ...] = ()
     val_path: str = ""
     seq_len: int = 512
     dtype: str = "uint16"
@@ -138,6 +141,21 @@ class TrainingConfig:
     qat_min_features: int = 256
 
     def __post_init__(self) -> None:
+        if self.train_paths:
+            if self.train_path:
+                raise ValueError("train_path and train_paths are mutually exclusive")
+            if len(self.train_paths) != len(self.train_weights):
+                raise ValueError("train_paths and train_weights must have the same length")
+            if any(not path for path in self.train_paths):
+                raise ValueError("train_paths must not contain empty paths")
+            if any(weight <= 0.0 or not math.isfinite(weight) for weight in self.train_weights):
+                raise ValueError("train_weights must be positive and finite")
+            object.__setattr__(self, "train_paths", tuple(self.train_paths))
+            object.__setattr__(
+                self, "train_weights", tuple(float(weight) for weight in self.train_weights)
+            )
+        elif self.train_weights:
+            raise ValueError("train_weights requires train_paths")
         if self.dtype not in {"uint16", "uint32", "int32", "int64"}:
             raise ValueError("dtype must be one of uint16, uint32, int32, int64")
         if self.seq_len <= 0 or self.batch_size <= 0 or self.grad_accum_steps <= 0:
