@@ -22,12 +22,14 @@
 - [x] Git-репозиторий, SSH remote, первый коммит отправлен в `origin/main`.
 - [x] Конфиги `smoke`, `100m`, `100m_qat`, `transformer_100m`, `1b`, `80b`.
 - [x] Расчёт параметров: 100M — 105.73M total / 49.10M active; 1B — 929.49M / 325.51M; 80B — 80.49B / 11.52B; Transformer-100M baseline — 106.28M.
-- [x] 114 тестов; `ruff`, `mypy` проходят.
+- [x] 130 тестов; `ruff`, `mypy` проходят.
 - [x] Smoke-обучение, resume, генерация, perplexity, QAT-обучение и QAT-inference.
 - [x] Демонстрационный корпус и скрипт подсчёта параметров.
 - [x] CI, `Makefile`, потоковая подготовка данных с manifest.
 - [x] Провенанс экспериментов: run metadata в checkpoint, JSONL-метрики и eval report.
 - [x] `L_memory`/`L_consistency`, throughput/RAM benchmark, Transformer baseline, eval harness.
+- [x] Потоковое курирование корпуса: exact/near dedup, фильтры качества, PII drop/redact и JSON-отчёт.
+- [x] Offline-калибровка групповых ternary-масштабов (`--calibrate`).
 
 ### 0.2 Чего принципиально ещё нет
 
@@ -106,7 +108,7 @@
 - [ ] `P0` Собрать русский, английский и code-корпус.
 - [ ] `P0` Обучить токенизатор 64k/128k на реальном корпусе.
 - [ ] `P0` Оценить fertility/compression токенизатора для RU/EN/code (инструмент `aurora-tokenizer-stats` готов; нужен 64k-токенизатор и реальный корпус).
-- [ ] `P0` Дедупликация, фильтрация качества, удаление PII.
+- [x] `P0` Инструмент дедупликации, фильтрации качества и удаления PII (`aurora-curate`; прогон на реальном корпусе — M1).
 - [x] `P1` Потоковый `prepare.py` без загрузки всего корпуса в RAM.
 - [x] `P1` Data mixture с весами доменов (`train_paths`/`train_weights`).
 - [x] `P1` Train/val/test split без пересечения документов (`--split-mode document`, `--test-fraction`).
@@ -123,7 +125,7 @@
 - [ ] `P0` Реализовать быстрый ternary matmul/kernel.
 - [x] `P1` Формат сериализации AURORA-TQ (`save_tq`/`load_tq`, CLI `aurora-tq`).
 - [ ] `P1` Сравнить ternary с 4-bit/8-bit и FP16 baseline.
-- [ ] `P1` Калибровка групповых масштабов.
+- [x] `P1` Калибровка групповых масштабов (offline по ошибке реконструкции весов; активационная калибровка не реализована).
 - [ ] `P2` Смешанная точность по слоям.
 
 ### 1.6 Inference
@@ -142,7 +144,7 @@
 
 ### 1.7 Качество и документация
 
-- [x] `P0` 114 тестов на архитектуру, память, роутер, QAT, обучение, данные, чекпоинты, провенанс, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card и inference.
+- [x] `P0` 130 тестов на архитектуру, память, роутер, QAT, обучение, данные, курирование, чекпоинты, провенанс, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card и inference.
 - [x] `P0` `ruff`, `mypy`, инструкции запуска.
 - [x] `P0` README с ограничениями и научной базой.
 - [x] `P0` Зафиксировать baseline-метрики smoke-модели.
@@ -448,7 +450,8 @@
 9. [ ] Проверить AMP и `torch.compile` на CUDA.
 10. [x] Реализовать `L_memory` и `L_consistency` (ablation ещё нужен).
 11. [x] Добавить CI.
-12. [ ] Написать data card и model card для 100M.
+12. [x] Реализовать потоковое курирование корпуса: dedup, quality filters, PII.
+13. [ ] Написать data card и model card для 100M.
 
 ---
 

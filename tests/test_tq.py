@@ -78,6 +78,38 @@ def test_tq_default_fp16_scales_roundtrip(
     torch.testing.assert_close(actual, expected, atol=5e-3, rtol=5e-3)
 
 
+def test_tq_calibrated_export_metadata(
+    tmp_path: Path, tiny_experiment_config: ExperimentConfig
+) -> None:
+    torch.manual_seed(5)
+    model = build_model(tiny_experiment_config.model)
+    model.eval()
+    path = tmp_path / "calibrated.aurora-tq"
+    metadata = save_tq(
+        path,
+        model,
+        tiny_experiment_config,
+        group_size=16,
+        min_features=16,
+        calibrate=True,
+        calibration_steps=3,
+    )
+    quantization = metadata["quantization"]
+    assert quantization["calibrated"] is True
+    assert quantization["calibration_steps"] == 3
+    loaded_model, _, loaded_metadata = load_tq_model(path)
+    assert loaded_metadata["quantization"]["calibrated"] is True
+    assert loaded_model is not None
+
+    with pytest.raises(ValueError, match="calibration_steps"):
+        save_tq(
+            tmp_path / "bad.aurora-tq",
+            model,
+            tiny_experiment_config,
+            calibration_steps=-1,
+        )
+
+
 def test_tq_roundtrip_regular_model(
     tmp_path: Path, tiny_experiment_config: ExperimentConfig
 ) -> None:

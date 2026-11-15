@@ -93,6 +93,34 @@ The log is append-only and may contain several `run_id` values if the same
 stores `best_val`, `tokens_seen`, `last_train`, `last_validation` and the log
 path.
 
+## Curation report (`curation_report.json`)
+
+`aurora.data.curate` writes a plain-text corpus plus this JSON report:
+
+| Key | Meaning |
+| --- | --- |
+| `format_version` | Curation report schema version (currently `1`) |
+| `created_utc` | Creation timestamp |
+| `config` | Every quality, dedup, PII and normalization setting |
+| `inputs` | Per-file path, detected format, bytes, SHA-256, records, `invalid_records` and `truncated` |
+| `output` | Path, bytes, SHA-256 and kept document count |
+| `counts` | Input/kept counters, script distribution, per-reason drop counters, `dropped_total` and `drop_reasons` |
+| `dataset_version` | Content-addressed `sha256:...` version of the curated output |
+| `run_metadata` | Git/environment block shared with training and evaluation |
+| `rejects` | Optional path to the rejection JSONL |
+
+`dataset_version` hashes the curation format version, the full curation config,
+input sizes and SHA-256 values, and the output size and SHA-256. Paths and
+timestamps are excluded, so re-running the same curation on the same inputs with
+the same filters produces the same version.
+
+Rejected JSONL rows contain `record`, `source`, optional `line` (JSONL input),
+`reason`, `characters`, detected `pii` kinds and `preview`. `preview` is `null`
+when `pii_action="drop"`; with `redact` or `keep` it stores the first 200
+characters (after redaction when configured). The curated output separates
+documents with a blank line and can be passed to tokenizer training or
+`aurora.data.prepare`.
+
 ## Tokenized dataset manifest (`manifest.json`)
 
 `aurora.data.prepare` writes a manifest next to `train.bin` and `val.bin`:
@@ -182,6 +210,13 @@ Tensor metadata records canonical name, source state-dict name, kind, shape,
 dtype or group size, entry names and SHA-256 checksums. Loading validates the ZIP
 container, format version, metadata size, entry paths, checksums, shapes, packed
 level size, scales size, duplicate names and unknown kinds. Writes are atomic.
+
+`metadata.quantization` also records `calibrated` and `calibration_steps`. With
+`--calibrate`, group scales are refined offline by alternating ternary
+assignments and the least-squares scale `sum(x*q) / sum(q*q)`; the scale with the
+lowest per-group reconstruction error is kept, so it is never worse than the
+mean-absolute baseline. Calibration only changes scale values, not the archive
+layout or format version. It uses weights, not activations.
 
 ```bash
 python -m aurora.quantization.tq export \

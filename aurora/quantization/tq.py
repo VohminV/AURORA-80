@@ -79,12 +79,17 @@ def save_tq(
     min_features: int = 256,
     skip_prefixes: Iterable[str] = DEFAULT_SKIP_PREFIXES,
     scales_dtype: str = "float16",
+    calibrate: bool = False,
+    calibration_steps: int = 4,
 ) -> dict[str, Any]:
     """Write an AURORA-TQ archive with packed ternary and dense tensors."""
     if group_size <= 0 or min_features <= 0:
         raise ValueError("group_size and min_features must be positive")
     if scales_dtype not in {"float16", "float32"}:
         raise ValueError("scales_dtype must be float16 or float32")
+    if calibration_steps < 0:
+        raise ValueError("calibration_steps must be non-negative")
+    effective_steps = calibration_steps if calibrate else 0
 
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -116,7 +121,11 @@ def save_tq(
                     and not any(token in source_name for token in skip)
                 )
                 if quantizable:
-                    quantized = quantize_ternary(tensor, group_size)
+                    quantized = quantize_ternary(
+                        tensor,
+                        group_size,
+                        calibration_steps=effective_steps,
+                    )
                     packed, numel = pack_ternary(quantized.levels)
                     scales = quantized.scales.to(scale_dtype).cpu().contiguous()
                     levels_data = packed.cpu().numpy().tobytes()
@@ -169,6 +178,8 @@ def save_tq(
                     "min_features": min_features,
                     "skip_prefixes": list(skip),
                     "scales_dtype": scales_dtype,
+                    "calibrated": calibrate,
+                    "calibration_steps": effective_steps,
                 },
                 "total_parameters": total_parameters,
                 "ternary_parameters": ternary_parameters,
@@ -338,6 +349,12 @@ def build_parser() -> argparse.ArgumentParser:
     export_parser.add_argument("--group-size", type=int, default=128)
     export_parser.add_argument("--min-features", type=int, default=256)
     export_parser.add_argument("--scales-dtype", choices=["float16", "float32"], default="float16")
+    export_parser.add_argument(
+        "--calibrate",
+        action="store_true",
+        help="Refine group scales by minimizing weight reconstruction error",
+    )
+    export_parser.add_argument("--calibration-steps", type=int, default=4)
     inspect_parser = subparsers.add_parser("inspect", help="Inspect an archive")
     inspect_parser.add_argument("path")
     return parser
@@ -373,6 +390,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         group_size=args.group_size,
         min_features=args.min_features,
         scales_dtype=args.scales_dtype,
+        calibrate=args.calibrate,
+        calibration_steps=args.calibration_steps,
     )
     print(
         f"{args.output}: {metadata['total_parameters']:,} parameters, "

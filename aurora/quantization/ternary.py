@@ -15,8 +15,61 @@ class TernaryTensor:
     group_size: int
 
 
+def _ternary_levels(groups: torch.Tensor, scales: torch.Tensor) -> torch.Tensor:
+    return torch.clamp(torch.round(groups / scales.unsqueeze(-1)), -1.0, 1.0)
+
+
+def _reconstruction_error(groups: torch.Tensor, scales: torch.Tensor) -> torch.Tensor:
+    levels = _ternary_levels(groups, scales)
+    return (groups - levels * scales.unsqueeze(-1)).pow(2).sum(dim=-1)
+
+
+def calibrate_group_scales(
+    groups: torch.Tensor,
+    scales: torch.Tensor,
+    *,
+    epsilon: float = 1e-8,
+    steps: int = 4,
+) -> torch.Tensor:
+    """Refine per-group scales by alternating assignments and least squares.
+
+    For a fixed ternary assignment the optimal scale is ``sum(x*q) / sum(q*q)``.
+    Starting from the mean-absolute scale, each step recomputes the assignment
+    and scale, keeping the scale with the lowest reconstruction error. The
+    result is never worse than the initial mean-absolute scale.
+    """
+    if steps < 0:
+        raise ValueError("steps must be non-negative")
+    if steps == 0:
+        return scales
+    best_scales = scales
+    best_error = _reconstruction_error(groups, best_scales)
+    current = scales
+    for _ in range(steps):
+        levels = _ternary_levels(groups, current)
+        numerator = (groups * levels).sum(dim=-1)
+        denominator = (levels * levels).sum(dim=-1)
+        candidate = torch.where(
+            denominator > 0,
+            numerator / denominator.clamp_min(1.0),
+            current,
+        ).clamp_min(epsilon)
+        error = _reconstruction_error(groups, candidate)
+        improved = error < best_error
+        best_error = torch.where(improved, error, best_error)
+        best_scales = torch.where(improved, candidate, best_scales)
+        if torch.allclose(candidate, current, rtol=0.0, atol=epsilon):
+            break
+        current = candidate
+    return best_scales
+
+
 def quantize_ternary(
-    weight: torch.Tensor, group_size: int = 128, epsilon: float = 1e-8
+    weight: torch.Tensor,
+    group_size: int = 128,
+    epsilon: float = 1e-8,
+    *,
+    calibration_steps: int = 0,
 ) -> TernaryTensor:
     if weight.numel() == 0:
         raise ValueError("Cannot quantize an empty tensor")
@@ -29,7 +82,14 @@ def quantize_ternary(
         flat = F.pad(flat, (0, padding))
     groups = flat.reshape(-1, effective_group)
     scales = groups.abs().mean(dim=-1).clamp_min(epsilon)
-    levels = torch.clamp(torch.round(groups / scales.unsqueeze(-1)), -1.0, 1.0)
+    if calibration_steps:
+        scales = calibrate_group_scales(
+            groups,
+            scales,
+            epsilon=epsilon,
+            steps=calibration_steps,
+        )
+    levels = _ternary_levels(groups, scales)
     levels = levels.reshape(-1, columns + padding)[:, :columns].reshape(original_shape)
     return TernaryTensor(
         levels=levels.to(torch.int8),

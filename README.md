@@ -222,6 +222,22 @@ python -m aurora.benchmarks.evaluate \
 
 ## Обучение на реальном корпусе
 
+### Курирование корпуса
+
+```bash
+python -m aurora.data.curate \
+  --input corpus_ru.txt corpus_en.jsonl corpus_code.txt \
+  --output data/curated/corpus.txt \
+  --report data/curated/curation_report.json \
+  --rejects data/curated/rejects.jsonl
+```
+
+`curate.py` читает текст и JSONL потоково, нормализует Unicode/переводы строк и пропускает только документы, прошедшие фильтры качества: длину в символах и словах, долю букв/цифр/символов, управляющие символы, длинные повторы и долю повторяющихся строк. Точные дубликаты определяются по нормализованному тексту, почти-дубликаты — по 64-битному SimHash с 8 бэндами (`--near-dedup-threshold`, по умолчанию 3). PII (email, IPv4, номера карт) можно удалять (`--pii-action drop`), заменять маркерами (`redact`) или оставлять (`keep`).
+
+Для text-входа документы разделяются пустой строкой; для JSONL текст берётся из поля `--json-field` (по умолчанию `text`), а битые записи учитываются в отчёте. `--report` содержит счётчики по каждому фильтру, распределение письменностей, SHA-256 входов/выхода, детерминированный `dataset_version` и `run_metadata`. `--rejects` пишет JSONL с причиной и позицией отклонённого документа; в режиме `drop` текст в preview не попадает. Курированный `.txt` затем передаётся в обучение токенизатора и `prepare.py`.
+
+Текущая реализация хранит множество точных хэшей и SimHash-индексы в RAM. Для корпусов на миллиарды токенов понадобится sharded/on-disk дедупликация.
+
 ### Токенизатор
 
 ```bash
@@ -347,6 +363,17 @@ python -m aurora.quantization.tq export \
 python -m aurora.quantization.tq inspect model.aurora-tq
 ```
 
+Экспорт с калибровкой групповых масштабов:
+
+```bash
+python -m aurora.quantization.tq export \
+  --checkpoint runs/aurora_100m_qat/best.pt \
+  --output model.aurora-tq \
+  --calibrate --calibration-steps 4
+```
+
+Калибровка offline минимизирует ошибку реконструкции весов в каждой группе: поочерёдно пересчитываются ternary-уровни и оптимальный по least squares масштаб `sum(x*q)/sum(q*q)`, сохраняется лучший вариант. Она не ухудшает baseline `mean(|w|)` и не меняет формат архива: масштабы по-прежнему хранятся как FP16/FP32. Это калибровка по весам, а не по активациям; отдельный activation-calibration ещё нужен.
+
 `load_tq_model` деквантует ternary-веса в обычную dense-модель для проверки и совместимости; memory-mapped runtime и быстрый ternary matmul пока не реализованы.
 
 ### Transformer baseline
@@ -393,6 +420,7 @@ Eval-отчёт (`reports/smoke_eval.json`) теперь включает `run_m
 - `L_memory` и `L_consistency` для ассоциативной памяти.
 - Validation loss и perplexity.
 - SentencePiece и byte-level tokenizer; `aurora-tokenizer-stats` для fertility/compression.
+- Потоковое курирование корпуса: exact/near dedup, фильтры качества, PII drop/redact, JSON-отчёт и `dataset_version`.
 - Потоковая подготовка данных с SHA-256 manifest и content-addressed `dataset_version`.
 - Автоматическая проверка manifest для train/val/mixture-путей на запуске и при resume.
 - Генерация data card из manifest с проверкой checksums (`aurora-data-card`).
@@ -400,13 +428,14 @@ Eval-отчёт (`reports/smoke_eval.json`) теперь включает `run_m
 - Transformer baseline с RoPE и KV-cache, совместимый с trainer/inference/eval.
 - Единый eval harness с per-domain perplexity, dataset_version и git/окружением в JSON-отчёте.
 - Ternary-квантование, упаковка 2-bit, QAT через straight-through estimator и версионированный AURORA-TQ архив.
+- Offline-калибровка групповых масштабов по минимальной ошибке реконструкции (`--calibrate`).
 - Загрузка чекпоинтов для инференса с автоматическим включением ternary-режима.
 - Генерация с temperature, top-k, top-p и repetition penalty; батчевый и streaming-режимы.
 - HTTP API для генерации (`aurora-serve`) и защита от слишком больших запросов.
 - Gradient checkpointing, early stopping и остановка по token budget.
 - Автоматический BF16/FP16 autocast на CUDA при генерации и оценке perplexity.
 - CI (lint, mypy, tests, end-to-end smoke на чистом runner), `Makefile`, benchmark throughput/RAM/latency.
-- 114 тестов: причинность, состояния, память, маршрутизация, квантование, обучение, resume, провенанс, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, baseline и инференс.
+- 130 тестов: причинность, состояния, память, маршрутизация, квантование, обучение, resume, провенанс, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, курирование корпуса, baseline и инференс.
 
 ---
 
@@ -439,6 +468,7 @@ AURORA-80/
 │   │   ├── train_tokenizer.py
 │   │   └── stats.py
 │   ├── data/
+│   │   ├── curate.py
 │   │   ├── prepare.py
 │   │   ├── dataset.py
 │   │   ├── mixture.py
@@ -496,7 +526,7 @@ mypy aurora
 - Все замеры throughput/latency/памяти сделаны на CPU. CUDA AMP и `torch.compile` в этом окружении не проверены.
 - 80B-конфигурация не обучалась и не запускалась. Это расчётная конфигурация.
 - Экспертная система распределена по слоям; стратегия разделяемых экспертов для 80B требует отдельных экспериментов.
-- Дедупликация, фильтрация качества и удаление PII ещё не реализованы; data mixture поддерживается через `train_paths`/`train_weights`, подготовка данных потоковая.
+- Курирование корпуса реализовано (`aurora-curate`), но на реальном корпусе ещё не прогонялось; точный и near-dedup индексы хранятся в RAM и не рассчитаны на миллиарды документов без шардирования. Data mixture поддерживается через `train_paths`/`train_weights`, подготовка данных потоковая.
 - Нет распределённого обучения и C++/CUDA runtime. AURORA-TQ v1 реализован, но быстрый ternary matmul и memory-mapped загрузка экспертов ещё не сделаны.
 - Пропускная способность RAM и предсказательная загрузка экспертов для 8 GB VRAM ещё не реализованы.
 

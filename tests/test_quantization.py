@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import pytest
 import torch
 
 from aurora.architecture.model import AuroraModel
 from aurora.config import ModelConfig
 from aurora.quantization import (
     TernaryLinear,
+    calibrate_group_scales,
     convert_to_ternary,
     dequantize_ternary,
     pack_ternary,
@@ -26,6 +28,33 @@ def test_quantize_and_dequantize() -> None:
     dequantized = dequantize_ternary(quantized)
     assert dequantized.shape == weight.shape
     assert torch.isfinite(dequantized).all()
+
+
+def test_calibration_reduces_reconstruction_error() -> None:
+    torch.manual_seed(3)
+    weight = torch.randn(32, 64)
+    baseline = quantize_ternary(weight, group_size=16)
+    calibrated = quantize_ternary(weight, group_size=16, calibration_steps=4)
+    baseline_error = (weight - dequantize_ternary(baseline)).pow(2).mean()
+    calibrated_error = (weight - dequantize_ternary(calibrated)).pow(2).mean()
+    assert calibrated_error <= baseline_error
+    assert calibrated_error < baseline_error
+
+
+def test_calibration_is_deterministic() -> None:
+    torch.manual_seed(4)
+    weight = torch.randn(16, 32)
+    first = quantize_ternary(weight, group_size=8, calibration_steps=3)
+    second = quantize_ternary(weight, group_size=8, calibration_steps=3)
+    torch.testing.assert_close(first.levels, second.levels)
+    torch.testing.assert_close(first.scales, second.scales)
+
+    groups = weight.reshape(-1, 8)
+    initial = groups.abs().mean(dim=-1).clamp_min(1e-8)
+    capped = calibrate_group_scales(groups, initial, steps=0)
+    torch.testing.assert_close(capped, initial)
+    with pytest.raises(ValueError, match="non-negative"):
+        calibrate_group_scales(groups, initial, steps=-1)
 
 
 def test_ste_has_gradient() -> None:
