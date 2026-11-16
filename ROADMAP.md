@@ -1,263 +1,265 @@
-# AURORA-80 — полный план этапов
+# AURORA-80 — дорожная карта исследования
 
-> Цель: довести исследовательскую гипотезу AURORA до проверяемого результата, не пропустив ни один критический этап.
+> Концепция: проверить, может ли сочетание многоуровневого рекуррентного ядра,
+> ассоциативной памяти с delta rule и разреженной маршрутизации экспертов дать
+> конкурентное качество языкового моделирования при меньшем active compute и
+> inference в целевых 8 GB VRAM.
 >
-> Легенда:
-> - `[x]` — сделано и проверено;
-> - `[ ]` — не сделано;
-> - `P0` — блокирует переход к следующему этапу;
-> - `P1` — важно для качества/масштабирования;
-> - `P2` — улучшение/полировка.
->
-> Правило: этап закрывается только когда отмечены все `P0` и пройден gate этапа. Нельзя заявлять превосходство над другой моделью без равных данных, compute и единого протокола оценки.
+> Главное правило: этап закрывается только когда выполнены все его `P0` и пройден
+> gate. Любое сравнение с другой моделью допустимо только при равных данных,
+> токенах, compute и едином протоколе оценки. Отрицательный результат фиксируется
+> так же честно, как положительный.
+
+## Легенда
+
+- `[x]` — сделано и проверено;
+- `[ ]` — не сделано;
+- `P0` — блокирует переход к следующему этапу;
+- `P1` — важно для качества, масштабирования или воспроизводимости;
+- `P2` — улучшение и полировка;
+- «инструмент готов» — код, тесты и документация есть, но реальный прогон на
+  данных/чекпоинте ещё не выполнен.
 
 ---
 
-## 0. Текущий срез проекта
+## 0. Срез проекта
 
-### 0.1 Что уже есть
+### 0.1 Что уже готово
 
-- [x] Репозиторий, Python-пакет `aurora`, `pyproject.toml`, `.gitignore`.
-- [x] Русскоязычный `README.md` с архитектурой, математикой и инструкциями.
-- [x] Git-репозиторий, SSH remote, первый коммит отправлен в `origin/main`.
-- [x] Конфиги `smoke`, `100m`, `100m_qat`, `transformer_100m`, `1b`, `80b`.
-- [x] Расчёт параметров: 100M — 105.73M total / 49.10M active; 1B — 929.49M / 325.51M; 80B — 80.49B / 11.52B; Transformer-100M baseline — 106.28M.
-- [x] 190 тестов; `ruff`, `mypy` проходят.
-- [x] Smoke-обучение, resume, генерация, perplexity, QAT-обучение и QAT-inference.
-- [x] Демонстрационный корпус и скрипт подсчёта параметров.
-- [x] CI, `Makefile`, потоковая подготовка данных с manifest.
-- [x] Провенанс экспериментов: run metadata в checkpoint, JSONL-метрики и eval report.
-- [x] `L_memory`/`L_consistency`, throughput/RAM benchmark, Transformer baseline, eval harness.
-- [x] Потоковое курирование корпуса: exact/near dedup, фильтры качества, PII drop/redact и JSON-отчёт.
-- [x] Потоковая проверка benchmark contamination по word n-граммам (`aurora-contamination`).
-- [x] Потоковая статистика корпуса: домены, письменности, code-строки и `language_hint` (`aurora-corpus-stats`).
-- [x] Zero-shot multiple-choice harness с log-prob скорингом (`aurora-zero-shot`; прогон на реальных бенчмарках — после 100M).
-- [x] Агрегация eval/zero-shot отчётов с mean/std по запускам (`aurora-report`).
-- [x] Ротация бэкапов best/latest и webhook-алерты при деградации/non-finite.
-- [x] Реестр экспериментов и артефактов с группировкой по run id (`aurora-registry`).
-- [x] Опциональный W&B-трекер (online/offline) с graceful fallback.
+**Архитектура и обучение**
+
+- [x] Многоуровневое рекуррентное ядро с межуровневым взаимодействием.
+- [x] Ассоциативная память с delta rule, decay/write gates.
+- [x] MoE с Top-K, load-balancing loss и z-loss.
+- [x] Residual integration, LayerScale, RMSNorm, SwiGLU, tied embeddings.
+- [x] `LanguageHead`, корректная инициализация и причинность.
+- [x] `L_memory` и `L_consistency`.
+- [x] Transformer baseline того же размера с RoPE и KV-cache.
+- [x] AdamW с раздельным weight decay, cosine scheduler с warmup.
+- [x] BF16/FP16 autocast, GradScaler, gradient accumulation и clipping.
+- [x] Пропуск non-finite шагов, early stopping и остановка по token budget.
+- [x] Gradient checkpointing и проверенный `torch.compile`
+  (`aot_eager`, `inductor`; MoE recompiles остаются).
+- [x] Checkpoint save/load, atomic replace, resume, auto-resume, best/latest.
+- [x] Проверка чекпоинтов на обязательные ключи, версию и non-finite тензоры.
+- [x] Ротация бэкапов best/latest и webhook-алерты при деградации.
+- [x] Опциональные TensorBoard и W&B (online/offline, graceful fallback).
+
+**Данные и токенизация**
+
+- [x] Byte-level tokenizer и SentencePiece tokenizer.
+- [x] Потоковая подготовка `.bin` и memmap-датасет.
+- [x] Manifest с SHA-256, `dataset_version` и проверкой при запуске/resume.
+- [x] Train/val/test split без пересечения документов.
+- [x] Data mixture с весами доменов.
+- [x] Потоковое курирование: exact/near dedup, качество, PII drop/redact.
+- [x] Потоковая статистика корпуса: домены, письменности, code-доли
+  (`aurora-corpus-stats`).
+- [x] Проверка benchmark contamination по word n-граммам
+  (`aurora-contamination`).
+- [x] `aurora-tokenizer-stats` для fertility/compression.
+- [x] Генератор data card с проверкой checksums (`aurora-data-card`).
+
+**QAT и формат весов**
+
+- [x] Ternary quantization, STE, packing/unpacking.
+- [x] `TernaryLinear`, конвертация модели и QAT resume/inference.
 - [x] Offline-калибровка групповых ternary-масштабов (`--calibrate`).
-- [x] Сравнение FP32/FP16/ternary/INT8/INT4 на одном чекпоинте и датасете (`aurora-quant-bench`).
-- [x] Проверка стабильности состояния на 4k/8k/16k/32k с опциональным reset (`aurora-state-check`; smoke/CPU).
-- [x] Абляция `core`/`core_memory`/`full` с равным token budget (`aurora-ablate`; smoke/CPU).
-- [x] CUDA AMP (BF16, FP16+GradScaler), gradient checkpointing и `torch.compile` (`aot_eager`, `inductor`) на RTX 3050; замеры 100M (CUDA медленнее CPU; MoE recompiles остаются).
+- [x] Сравнение FP32/FP16/ternary/INT8/INT4 на одном чекпоинте
+  (`aurora-quant-bench`).
+- [x] Версионированный формат AURORA-TQ v1 (`save_tq`/`load_tq`, `aurora-tq`).
 
-### 0.2 Чего принципиально ещё нет
+**Оценка и inference**
 
-- [ ] Реального обучения на большом корпусе.
-- [ ] Публичных бенчмарков и сравнения с baseline-архитектурами.
-- [ ] Обученного токенизатора на 64k/128k.
-- [ ] Distributed training, FSDP/TP/EP.
-- [ ] Chunkwise parallel scan и быстрых ядер.
-- [ ] C++/CUDA runtime и заявленных 8 GB VRAM.
-- [ ] SFT, alignment, safety-оценки.
-- [ ] Финальные лицензии, model card и data card для обученного 100M (генераторы и черновики готовы).
-- [ ] Доказательства превосходства над DeepSeek или любой другой моделью.
+- [x] PyTorch reference inference, state continuation без KV-cache.
+- [x] Temperature, top-k, top-p, repetition penalty.
+- [x] Батчевая и streaming-генерация.
+- [x] HTTP API (`aurora-serve`, localhost по умолчанию).
+- [x] Perplexity и единый eval harness с per-domain отчётом.
+- [x] Zero-shot multiple-choice harness (`aurora-zero-shot`).
+- [x] Агрегация результатов с mean/std по запускам (`aurora-report`).
+- [x] Реестр экспериментов и артефактов (`aurora-registry`).
+- [x] Проверка стабильности состояния 4k/8k/16k/32k (`aurora-state-check`).
+- [x] Абляция `core`/`core_memory`/`full` (`aurora-ablate`).
+- [x] Генератор model card и черновик `docs/model_card_100m.md`.
+
+**Инженерия и воспроизводимость**
+
+- [x] Пакет `aurora`, entry points, строгая валидация YAML.
+- [x] Seed, восстановление RNG, провенанс эксперимента.
+- [x] Run metadata в чекпоинте: git, окружение, seed, версия данных.
+- [x] JSONL-метрики и сводка метрик внутри чекпоинта.
+- [x] CI: lint, mypy, tests и end-to-end smoke на чистом runner.
+- [x] Docker CPU/CUDA, `Makefile`.
+- [x] ADR и документация форматов.
+- [x] 190 тестов; `ruff`, `mypy` и format-check проходят.
+
+### 0.2 Чего ещё нет
+
+- [ ] Реального корпуса RU/EN/code и обученного токенизатора 64k.
+- [ ] Обученного AURORA-100M и честного сравнения с Transformer baseline.
+- [ ] Публичных бенчмарков и отчёта с результатами нескольких seed.
+- [ ] Distributed training, FSDP/TP/EP и sharded checkpoints.
+- [ ] Chunkwise parallel scan, fused kernels и быстрого ternary matmul.
+- [ ] C++/CUDA runtime, memory-mapped экспертов и целевых 8 GB VRAM.
+- [ ] SFT, alignment и safety-оценок.
+- [ ] Определённых лицензий кода, весов и данных.
+- [ ] Финальных model card и data card обученной модели.
+- [ ] Доказательств превосходства над DeepSeek или любой другой моделью.
+
+### 0.3 Зафиксированные ориентиры
+
+| Конфигурация | Total params | Active params |
+| --- | ---: | ---: |
+| AURORA-100M | 105.73M | 49.10M |
+| Transformer-100M baseline | 106.28M | 106.28M |
+| AURORA-1B | 929.49M | 325.51M |
+| AURORA-80B | 80.49B | 11.52B |
+
+Smoke/CUDA-ориентиры: ~22 tok/s на 100M при обучении на RTX 3050; 2.7 GB
+allocated / 3.2 GB reserved; gradient checkpointing даёт −24% VRAM и −41%
+throughput; CUDA eager медленнее CPU из-за последовательного ядра.
+
+### 0.4 Честные ограничения текущего среза
+
+- Smoke-обучение и абляции проверяют механику, но не доказывают качество
+  архитектуры.
+- QAT и квантизационное сравнение не заменяют FP baseline на обученном 100M.
+- Inference-замеры 8 GB VRAM относятся к dense PyTorch-пути, а не к будущему
+  runtime.
+- `aurora-zero-shot`, `aurora-report` и `aurora-registry` готовы как инструменты,
+  но реальные бенчмарки и multi-seed отчёты ещё не получены.
 
 ---
 
 ## 1. M0 — Foundation: воспроизводимый прототип
 
-### 1.1 Инженерия и инфраструктура
+**Статус: закрыт.**
 
-- [x] `P0` Структура пакета и entry points (`aurora-train`, `aurora-prepare`, `aurora-generate`, `aurora-perplexity`, `aurora-evaluate`, `aurora-tokenizer`).
-- [x] `P0` Строгая валидация YAML-конфигов через dataclass.
-- [x] `P0` Seed, deterministic-режим, сохранение/восстановление RNG.
-- [x] `P0` Checkpoint save/load, atomic replace, `weights_only=True`.
-- [x] `P0` Resume обучения, включая QAT.
-- [x] `P0` Провенанс экспериментов: run metadata (git, окружение, dataset fingerprint) в checkpoint, JSONL-метрики и eval report.
-- [x] `P0` Проверка `manifest.dataset_version`, размеров и SHA-256 для train/val/mixture при запуске и resume.
-- [x] `P1` Опциональный TensorBoard.
-- [x] `P1` Опциональный `torch.compile` (код есть).
-- [x] `P0` Проверить `torch.compile` на 100M конфигурации (`aot_eager` и `inductor` на CUDA; для `inductor` понадобились локальные заголовки Python 3.12; MoE recompiles остаются).
-- [x] `P0` CI: lint, mypy, tests и end-to-end smoke на каждый push.
-- [x] `P1` Docker-образ для обучения и inference (CPU по умолчанию, CUDA через build arg; сборка проверяется в CI).
-- [x] `P1` Makefile/Taskfile с типовыми командами.
-- [ ] `P2` Публикация пакета/версионирование.
+- [x] `P0` Пакет, entry points, конфиги, CI, Docker, `Makefile`.
+- [x] `P0` Архитектура AURORA и Transformer baseline.
+- [x] `P0` Обучение, validation, checkpoints, resume, QAT.
+- [x] `P0` Данные: prepare, manifest, versioning, mixture, document split.
+- [x] `P0` Inference: generation, perplexity, HTTP API, batched/streaming.
+- [x] `P0` 190 тестов, `ruff`, `mypy`, end-to-end smoke на чистом runner.
+- [x] `P0` Проверены AMP, gradient checkpointing и `torch.compile` на CUDA.
+- [x] `P0` Замерены throughput, память и latency прототипа (CPU и CUDA).
 
-### 1.2 Архитектура
-
-- [x] `P0` Многоуровневое рекуррентное ядро с межуровневым взаимодействием.
-- [x] `P0` Ассоциативная память с delta rule, decay/write gates.
-- [x] `P0` MoE с Top-K, load-balancing loss и z-loss.
-- [x] `P0` Residual integration и LayerScale.
-- [x] `P0` RMSNorm, SwiGLU, tied embeddings.
-- [x] `P0` `LanguageHead` и корректная инициализация.
-- [x] `P0` Причинность и продолжение состояния проверены тестами.
-- [x] `P1` `norm_eps` прокинут во внутренние нормы.
-- [x] `P1` Реализовать `L_memory` и `L_consistency`.
-- [x] `P1` Провести ablation: вклад core/memory/MoE по отдельности (smoke/CPU; содержательный вывод — на 100M в M2).
-- [x] `P1` Проверить стабильность состояния на длинах 4k/8k/16k/32k (smoke-модель, CPU; 100M — после M1).
-- [x] `P1` Решить, нужны ли начальное состояние и state reset между документами (ADR 0004: нулевое начальное состояние; reset на границах документов — в M2).
-- [ ] `P2` Варианты памяти: linear attention, delta-net, Titans-like.
-- [ ] `P2` Shared experts и expert choice routing.
-
-### 1.3 Обучение
-
-- [x] `P0` AdamW с раздельным weight decay.
-- [x] `P0` Cosine scheduler с warmup.
-- [x] `P0` BF16/FP16 autocast и GradScaler для FP16.
-- [x] `P0` Gradient accumulation, clipping, пропуск non-finite шагов.
-- [x] `P0` Validation loss/perplexity и best/latest checkpoints.
-- [x] `P0` Smoke-обучение подтверждает снижение loss.
-- [x] `P0` Проверить AMP на реальной CUDA (RTX 3050; BF16 и FP16+GradScaler; smoke train/resume).
-- [x] `P0` Замерить throughput и peak memory для 100M (CPU и CUDA: 22 tok/s, 2.7 GB allocated, 3.2 GB reserved на CUDA).
-- [x] `P1` Gradient checkpointing для длинных последовательностей (CPU-тесты; CUDA: −24% VRAM, −41% throughput).
-- [ ] `P1` Подобрать learning rate, betas, warmup, weight decay на 100M.
-- [x] `P1` Early stopping и остановка по compute budget (`max_tokens`).
-- [x] `P1` Эксперимент-трекер: опциональный W&B с online/offline режимами и graceful fallback.
-- [ ] `P2` Curriculum learning и context extension.
-
-### 1.4 Данные и токенизация
-
-- [x] `P0` Byte-level tokenizer.
-- [x] `P0` SentencePiece tokenizer и скрипт обучения.
-- [x] `P0` Подготовка `.bin` и memmap-датасет.
-- [x] `P0` Защита от утечки validation в train.
-- [x] `P0` Проверка границ `uint16`/`uint32`.
-- [x] `P0` Pickle-safe memmap для DataLoader workers.
-- [ ] `P0` Собрать русский, английский и code-корпус.
-- [ ] `P0` Обучить токенизатор 64k/128k на реальном корпусе.
-- [ ] `P0` Оценить fertility/compression токенизатора для RU/EN/code (инструмент `aurora-tokenizer-stats` готов; нужен 64k-токенизатор и реальный корпус).
-- [x] `P0` Инструмент дедупликации, фильтрации качества и удаления PII (`aurora-curate`; прогон на реальном корпусе — M1).
-- [x] `P1` Потоковый `prepare.py` без загрузки всего корпуса в RAM.
-- [x] `P1` Data mixture с весами доменов (`train_paths`/`train_weights`).
-- [x] `P1` Train/val/test split без пересечения документов (`--split-mode document`, `--test-fraction`).
-- [x] `P1` Data card и версионирование датасета (`dataset_version`, `aurora-data-card`, `--verify`).
-- [ ] `P2` Синтетические данные и code/math-специализация.
-
-### 1.5 QAT и сжатие
-
-- [x] `P0` Ternary quantization, STE, packing/unpacking.
-- [x] `P0` `TernaryLinear`, конвертация модели, идемпотентность.
-- [x] `P0` QAT checkpoint loading для генерации и perplexity.
-- [x] `P0` Тесты QAT-обучения и QAT-inference.
-- [ ] `P0` Измерить quality recovery после QAT на 100M.
-- [ ] `P0` Реализовать быстрый ternary matmul/kernel.
-- [x] `P1` Формат сериализации AURORA-TQ (`save_tq`/`load_tq`, CLI `aurora-tq`).
-- [x] `P1` Сравнить ternary с 4-bit/8-bit и FP16 baseline (weight-only PTQ harness; прогон на 100M — после M1-обучения).
-- [x] `P1` Калибровка групповых масштабов (offline по ошибке реконструкции весов; активационная калибровка не реализована).
-- [ ] `P2` Смешанная точность по слоям.
-
-### 1.6 Inference
-
-- [x] `P0` PyTorch reference inference.
-- [x] `P0` State continuation без KV-cache.
-- [x] `P0` Temperature, top-k, top-p, repetition penalty.
-- [x] `P0` Centralized checkpoint loading и autocast.
-- [x] `P0` Perplexity evaluation.
-- [x] `P0` Замерить latency/tokens/s/RAM для 100M (CPU и CUDA; CUDA eager медленнее из-за последовательного ядра).
-- [x] `P0` Реализовать батчевый и streaming inference (`generate_batch`, `stream_generate`).
-- [x] `P1` HTTP API/server (`aurora-serve`; single-prompt, localhost by default).
-- [ ] `P1` Memory-mapped загрузка экспертов.
-- [ ] `P1` Expert prefetch/cache для 8 GB VRAM.
-- [ ] `P2` Speculative decoding.
-
-### 1.7 Качество и документация
-
-- [x] `P0` 190 тестов на архитектуру, память, роутер, QAT, обучение, данные, курирование, статистику корпуса, contamination, чекпоинты, бэкапы и алерты, провенанс, реестр экспериментов, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, zero-shot оценку, агрегацию результатов, W&B tracker, сравнение квантизации, длинный контекст, абляцию компонентов и inference.
-- [x] `P0` `ruff`, `mypy`, инструкции запуска.
-- [x] `P0` README с ограничениями и научной базой.
-- [x] `P0` Зафиксировать baseline-метрики smoke-модели.
-- [x] `P1` Architecture decision records (ADR).
-- [x] `P1` Генератор model card (`aurora-model-card`) и черновик `docs/model_card_100m.md`.
-- [ ] `P2` Схемы обучения и диаграммы.
-
-### Gate M0
-
-- [x] Все тесты проходят.
-- [x] Smoke-обучение воспроизводимо.
-- [x] Checkpoint можно сохранить, загрузить и использовать.
-- [x] QAT-модель можно обучить и запустить.
-- [x] CI зелёный на чистой машине (lint, mypy, pytest и end-to-end smoke с resume и проверкой провенанса).
-- [x] Замерены throughput, память и latency прототипа (CPU и CUDA).
+**Gate M0 пройден:** smoke-обучение воспроизводимо, чекпоинт можно сохранить,
+загрузить и использовать, QAT обучается и запускается, CI зелёный.
 
 ---
 
-## 2. M1 — Research baseline 100M
+## 2. M1 — Research baseline 100M (текущий этап)
 
-**Цель:** получить воспроизводимый baseline на реальном корпусе и сравнить с Transformer-аналогом при равном compute.
+**Цель:** получить воспроизводимый baseline AURORA-100M на реальном корпусе и
+сравнить его с Transformer-аналогом при равных данных, токенах и compute.
 
-### 2.1 Данные
+### 2.1 Лицензии и корпус
 
-- [ ] `P0` Корпус не менее 2–5 млрд токенов после токенизации.
-- [ ] `P0` Зафиксированная версия датасета и хэши файлов.
-- [ ] `P0` Очистка, дедупликация, фильтр качества.
-- [ ] `P0` Отдельный test set, не использованный в обучении.
-- [ ] `P0` Обученный токенизатор 64k.
-- [x] `P1` Анализ распределения языков и доменов (`aurora-corpus-stats`; эвристика по письменностям; прогон на реальном корпусе — после его сборки).
-- [x] `P1` Защита от benchmark contamination (word n-gram checker `aurora-contamination`; прогон на реальных бенчмарках — после сборки корпуса).
+- [ ] `P0` Определить лицензию кода, весов и правила использования.
+- [ ] `P0` Собрать RU/EN/code-корпус не менее 2–5 млрд токенов после
+  токенизации.
+- [ ] `P0` Проверить лицензии источников и сохранить атрибуцию.
+- [ ] `P0` Прогнать курирование: качество, exact/near dedup, PII.
+- [ ] `P0` Прогнать contamination-check против планируемых бенчмарков.
+- [ ] `P0` Зафиксировать immutable-версию датасета, SHA-256 и data card.
+- [ ] `P0` Выделить отдельный test set, не использованный в обучении.
+- [ ] `P1` Проанализировать распределение языков и доменов
+  (`aurora-corpus-stats`).
 
-### 2.2 Обучение
+### 2.2 Токенизатор
 
-- [x] `P1` Реализовать Transformer baseline того же размера.
-- [ ] `P0` Полный прогон 100M на 1–2B токенов.
-- [ ] `P0` Несколько seed-ов или минимум 2 повторных запуска.
-- [ ] `P0` Логи loss/LR/grad norm/tokens/s.
-- [ ] `P0` Checkpoint каждые N шагов, resume проверен.
-- [ ] `P1` Hyperparameter sweep.
-- [ ] `P1` Сравнение с Transformer baseline того же размера.
-- [ ] `P1` Сравнение с Mamba-2/RWKV-7 baseline, если доступны.
-- [ ] `P2` Ablation по `n_levels`, `d_state`, `memory_heads`, `n_experts`, `top_k`.
+- [ ] `P0` Обучить SentencePiece-токенизатор 64k на реальном корпусе.
+- [ ] `P0` Замерить fertility/compression для RU/EN/code
+  (`aurora-tokenizer-stats`).
+- [ ] `P0` Проверить бюджет embedding и совместимость с 100M-конфигом.
+- [ ] `P1` Сравнить 32k/64k/128k по fertility и стоимости.
+- [ ] `P1` Зафиксировать SHA-256 токенизатора в manifest.
 
-### 2.3 Оценка
+### 2.3 Обучение
 
-- [x] `P1` Единый eval harness с per-domain perplexity и JSON-отчётом.
+- [ ] `P0` Реализовать hyperparameter sweep для LR/betas/warmup/weight decay.
+- [ ] `P0` Провести sweep на малом масштабе и зафиксировать протокол.
+- [ ] `P0` Обучить AURORA-100M на 1–2 млрд токенов.
+- [ ] `P0` Повторить запуск минимум с двумя seed (или два независимых прогона).
+- [ ] `P0` Логировать loss/LR/grad norm/tokens/s и проверять resume.
+- [ ] `P1` Обучить Transformer-100M на тех же данных, токенах и compute.
+- [ ] `P1` Сравнить с Mamba-2/RWKV-7 baseline, если доступны.
+- [ ] `P1` Явно указывать total и active compute в отчётах.
+- [ ] `P2` Curriculum learning и context extension.
+
+### 2.4 Оценка
+
 - [ ] `P0` Held-out perplexity на RU/EN/code.
-- [ ] `P0` Zero-shot: MMLU, HellaSwag, ARC, WinoGrande (harness `aurora-zero-shot` готов; нужны данные и обученный чекпоинт).
+- [ ] `P0` Zero-shot MMLU, HellaSwag, ARC, WinoGrande
+  (harness `aurora-zero-shot` готов; нужны данные).
 - [ ] `P0` RU-бенчмарки: ruMMLU, Russian SuperGLUE и аналоги.
 - [ ] `P0` Code: HumanEval, MBPP.
-- [ ] `P0` Отчёт с таблицей результатов и погрешностями (агрегатор `aurora-report` готов; нужны прогоны нескольких seed).
+- [ ] `P0` Отчёт с таблицей результатов и погрешностями
+  (агрегатор `aurora-report` готов).
+- [ ] `P0` Зафиксировать вывод: гипотеза подтверждается, опровергается или
+  требует изменений.
 - [ ] `P1` Анализ ошибок и типичных failure modes.
 - [ ] `P1` Human evaluation для RU/EN.
+- [ ] `P1` Проверить state stability на длинах обучения.
 
 ### Gate M1
 
 - [ ] Loss стабильно снижается, нет деградации состояния.
 - [ ] Модель превосходит random baseline.
-- [ ] Есть честное сравнение с Transformer при равных параметрах/токенах.
-- [ ] Есть вывод: гипотеза подтверждается, опровергается или требует изменений.
+- [ ] Есть честное сравнение с Transformer при равных параметрах/токенах/compute.
+- [ ] Есть отчёт с mean/std минимум по двум запускам.
 - [ ] Все эксперименты воспроизводятся по README.
+- [ ] Принято решение о переходе к M2 или изменении архитектуры.
 
 ---
 
-## 3. M2 — Архитектурные абляции и scaling laws
+## 3. M2 — Абляции, scaling laws и длинный контекст
 
-### 3.1 Абляции
+### 3.1 Архитектурные абляции
 
 - [ ] `P0` Core only.
 - [ ] `P0` Core + memory.
 - [ ] `P0` Core + memory + MoE.
 - [ ] `P0` Варианты residual integration и LayerScale.
-- [ ] `P0` Вклад `L_memory` и `L_consistency`.
+- [ ] `P0` Вклад `L_memory` и `L_consistency` и их коэффициентов.
 - [ ] `P0` Влияние `n_levels` и `d_state`.
 - [ ] `P0` Влияние числа экспертов и `top_k`.
 - [ ] `P1` Варианты decay/write gates.
 - [ ] `P1` Варианты нормализации состояния.
 - [ ] `P1` Shared experts vs independent experts.
+- [ ] `P2` Варианты памяти: linear attention, delta-net, Titans-like.
+- [ ] `P2` Expert choice routing.
+
+Текущий `aurora-ablate` закрывает только `core`/`core_memory`/`full`; для
+остальных пунктов его нужно расширить конфигурационными вариантами.
 
 ### 3.2 Scaling laws
 
-- [ ] `P0` Серия 10M/30M/100M/300M параметров.
+- [ ] `P0` Добавить конфиги и серию 10M/30M/100M/300M.
 - [ ] `P0` Fit scaling law по loss от compute/parameters/tokens.
-- [ ] `P0` Проверка предсказания на 300M.
-- [ ] `P1` Оценка compute-optimal token budget.
-- [ ] `P1` Сравнение scaling curve с Transformer baseline.
+- [ ] `P0` Проверить предсказание на 300M.
+- [ ] `P1` Оценить compute-optimal token budget.
+- [ ] `P1` Сравнить scaling curve с Transformer baseline.
+- [ ] `P1` Сделать fitting-инструмент с артефактом отчёта.
 
-### 3.3 Длинный контекст
+### 3.3 Длинный контекст и состояние
 
 - [ ] `P0` Обучение/оценка на 2k/4k/8k.
 - [ ] `P0` Проверка деградации памяти и состояния.
+- [ ] `P0` Решить и реализовать state reset на границах документов.
 - [ ] `P1` Chunkwise parallel scan.
-- [ ] `P1` State reset и документные границы.
 - [ ] `P1` Оценка long-context задач.
+- [ ] `P1` Сравнить нулевое состояние, reset и learned initial state.
 - [ ] `P2` Расширение до 32k+.
 
 ### Gate M2
 
 - [ ] Выбрана финальная архитектура для 1B.
-- [ ] Есть scaling law с приемлемой ошибкой.
+- [ ] Есть scaling law с приемлемой ошибкой и проверкой на 300M.
 - [ ] Понятно, какие компоненты дают вклад, а какие можно удалить.
+- [ ] Long-context поведение измерено и задокументировано.
 
 ---
 
@@ -267,12 +269,12 @@
 
 - [ ] `P0` Distributed Data Parallel.
 - [ ] `P0` FSDP или sharded optimizer.
-- [ ] `P0` Sharded checkpoints.
+- [ ] `P0` Sharded checkpoints и быстрое восстановление.
 - [ ] `P0` Expert parallelism для MoE.
 - [ ] `P0` Мониторинг GPU/RAM/network.
 - [ ] `P1` Mixed precision на реальном кластере.
-- [ ] `P1` Gradient/activation checkpointing.
-- [ ] `P1` Отказоустойчивость и авто-resume.
+- [ ] `P1` Gradient/activation checkpointing на масштабе.
+- [ ] `P1` Отказоустойчивость и авто-resume на длинном прогоне.
 
 ### 4.2 Данные и обучение
 
@@ -281,7 +283,7 @@
 - [ ] `P0` Проверка стабильности на всём прогоне.
 - [ ] `P0` Оценка на тех же бенчмарках, что и 100M.
 - [ ] `P1` Сравнение с 1B Transformer/Mamba baseline.
-- [ ] `P1` Оценка стоимости обучения.
+- [ ] `P1` Оценка стоимости обучения и inference.
 
 ### Gate M3
 
@@ -297,30 +299,33 @@
 ### 5.1 Качество QAT
 
 - [ ] `P0` FP16 baseline и QAT checkpoint на одном чекпоинте.
-- [ ] `P0` Замер падения perplexity/бенчмарков после QAT.
-- [ ] `P0` Подбор `qat_start_step`, group size, min features.
-- [ ] `P0` Проверка QAT на 1B.
+- [ ] `P0` Замерить падение perplexity/бенчмарков после QAT на 100M.
+- [ ] `P0` Подобрать `qat_start_step`, group size и `min_features`.
+- [ ] `P0` Проверить QAT на 1B.
 - [ ] `P1` Дистилляция/калибровка для восстановления качества.
 - [ ] `P1` Сравнение с GPTQ/AWQ/4-bit baseline.
+- [ ] `P2` Смешанная точность по слоям.
 
 ### 5.2 Runtime
 
-- [x] `P0` Формат AURORA-TQ: weights, scales, metadata, versioning (v1, checksums).
+- [x] `P0` Формат AURORA-TQ v1: weights, scales, metadata, checksums.
 - [ ] `P0` Быстрый ternary matmul.
 - [ ] `P0` C++/CUDA inference runtime.
-- [ ] `P0` Memory-mapped эксперты.
+- [ ] `P0` Memory-mapped загрузка экспертов.
 - [ ] `P0` Expert cache/prefetch.
 - [ ] `P0` Замер: 8 GB VRAM, 32 GB RAM, целевой tokens/s.
-- [ ] `P1` Батчинг, streaming, HTTP API (PyTorch-уровень готов; оптимизированный runtime — нет).
-- [ ] `P1` Профилирование узких мест.
+- [ ] `P0` Профилирование узких мест runtime.
+- [ ] `P1` Батчинг, streaming и HTTP API на уровне runtime
+  (PyTorch-уровень готов).
 - [ ] `P1` Fallback на CPU.
+- [ ] `P2` Speculative decoding.
 
 ### Gate M4
 
 - [ ] QAT-модель достигает согласованного quality target.
 - [ ] Runtime укладывается в 8 GB VRAM на целевой конфигурации.
 - [ ] Есть воспроизводимый benchmark latency/throughput.
-- [x] Формат весов задокументирован и стабилен (AURORA-TQ v1).
+- [ ] Формат весов стабилен и задокументирован (AURORA-TQ v1 готов).
 
 ---
 
@@ -332,13 +337,13 @@
 - [ ] `P0` Expert parallelism на 140 экспертов.
 - [ ] `P0` Sharded checkpoints и быстрое восстановление.
 - [ ] `P0` Отказоустойчивость на длинных прогонах.
-- [ ] `P0` Оценка стоимости обучения и инференса.
+- [ ] `P0` Оценка стоимости обучения и inference.
 - [ ] `P1` Pipeline parallelism при необходимости.
 - [ ] `P1` Оптимизация communication overhead.
 
 ### 6.2 Данные
 
-- [ ] `P0` 200–400B+ токенов (согласовано с active params).
+- [ ] `P0` 200–400B+ токенов, согласованных с active params.
 - [ ] `P0` Финальный data mixture.
 - [ ] `P0` Контроль contamination.
 - [ ] `P1` Curriculum и long-context stage.
@@ -383,10 +388,10 @@
 
 ### 7.3 Релиз
 
-- [ ] `P0` Лицензия.
-- [ ] `P0` Финальная model card обученного 100M (генератор есть).
+- [ ] `P0` Лицензия кода и весов.
+- [ ] `P0` Финальная model card обученного 100M/1B (генератор есть).
 - [ ] `P0` Финальная data card реального корпуса (генератор есть).
-- [ ] `P0` Evaluation report с методологией.
+- [ ] `P0` Evaluation report с методологией и mean/std.
 - [ ] `P0` Воспроизводимые команды обучения/инференса.
 - [ ] `P0` Контрольные суммы весов.
 - [ ] `P1` Release notes.
@@ -394,7 +399,7 @@
 
 ### Gate M6
 
-- [ ] Все P0 закрыты.
+- [ ] Все `P0` закрыты.
 - [ ] Бенчмарки и ограничения опубликованы честно.
 - [ ] Нет нерешённых критических safety/legal-проблем.
 - [ ] Релиз воспроизводим и задокументирован.
@@ -405,10 +410,12 @@
 
 ### 8.1 Воспроизводимость
 
-- [x] `P0` Каждый эксперимент имеет git commit, конфиг, seed и версию данных (run metadata в чекпоинте и отчётах).
-- [x] `P0` Логи и метрики сохраняются вместе с чекпоинтом (`metrics.jsonl` и `metrics` в чекпоинте).
-- [ ] `P0` Одинаковые результаты при повторном запуске в пределах допуска.
-- [x] `P1` Реестр экспериментов и артефактов (`aurora-registry`; группировка по run id, опциональный SHA-256).
+- [x] `P0` Git commit, конфиг, seed и версия данных в run metadata.
+- [x] `P0` Логи и метрики сохраняются вместе с чекпоинтом.
+- [ ] `P0` Эмпирически подтвердить одинаковые результаты при повторном запуске
+  в пределах допуска (два seed на 100M).
+- [x] `P1` Реестр экспериментов и артефактов (`aurora-registry`).
+- [ ] `P1` Гайд по воспроизведению экспериментов.
 
 ### 8.2 Производительность
 
@@ -417,16 +424,17 @@
 - [ ] `P0` Устранение лишних GPU-синхронизаций.
 - [ ] `P1` Fused kernels для recurrent core.
 - [ ] `P1` Chunkwise parallel scan.
-- [ ] `P1` CUDA graphs и `torch.compile` без рекомпиляций (`inductor` проверен; CUDA graphs — нет).
-- [ ] `P1` Убрать рекомпиляции MoE при `torch.compile` (`inductor` на CUDA прогнан; достигается recompile limit).
+- [ ] `P1` CUDA graphs и `torch.compile` без рекомпиляций.
+- [ ] `P1` Убрать рекомпиляции MoE при `torch.compile`.
 
 ### 8.3 Надёжность
 
 - [x] `P0` Авто-resume после падения.
 - [x] `P0` Проверка чекпоинтов на битые тензоры.
 - [x] `P0` Мониторинг non-finite loss/grad.
-- [x] `P1` Алерты при деградации (webhook из `AURORA_ALERT_WEBHOOK`; degradation/early stopping/non-finite; ошибки доставки не фатальны).
-- [x] `P1` Backup чекпоинтов (атомарные копии best/latest с ротацией `--backup-count`).
+- [x] `P1` Алерты при деградации и раннем останове.
+- [x] `P1` Backup чекпоинтов с ротацией.
+- [ ] `P1` Внешний мониторинг и дашборды длинных прогонов.
 
 ### 8.4 Безопасность и право
 
@@ -441,57 +449,68 @@
 - [x] `P0` README с быстрым стартом.
 - [x] `P0` ROADMAP с этапами и чек-листами.
 - [x] `P0` Architecture decision records.
-- [x] `P0` Описание формата чекпоинтов и AURORA-TQ.
-- [x] `P1` Генератор model card и черновик карты AURORA-100M.
+- [x] `P0` Описание чекпоинтов и AURORA-TQ.
+- [x] `P1` Генератор model card и черновик AURORA-100M.
+- [x] `P1` Генератор data card.
 - [ ] `P1` API reference.
 - [ ] `P1` Troubleshooting.
 - [ ] `P1` Гайд по воспроизведению экспериментов.
+- [ ] `P2` Схемы обучения и диаграммы.
 - [ ] `P2` Технический отчёт/статья.
 
 ---
 
-## 9. Ближайший P0-бэклог
+## 9. Ближайший backlog
 
-1. [ ] Определить лицензию и правила использования.
-2. [ ] Собрать и очистить первый реальный корпус.
-3. [ ] Обучить токенизатор 64k и замерить fertility.
-4. [x] Сделать потоковую подготовку данных.
-5. [ ] Запустить 100M на 1–2B токенов.
-6. [x] Реализовать Transformer baseline того же размера.
-7. [x] Добавить единый eval harness и отчёт (нужен прогон на 100M).
-8. [x] Замерить throughput/VRAM/latency (CPU и CUDA; 100M ~2.7 GB VRAM).
-9. [x] Проверить AMP и `torch.compile` на CUDA (BF16, FP16+GradScaler, `aot_eager`, `inductor`; MoE recompiles остаются).
-10. [x] Реализовать `L_memory` и `L_consistency` (smoke-абляция есть; вклад на 100M ещё нужен).
-11. [x] Добавить CI.
-12. [x] Реализовать потоковое курирование корпуса: dedup, quality filters, PII.
-13. [ ] Написать финальные data card и model card для обученного 100M (генераторы готовы; нужны реальные данные и чекпоинт).
-14. [x] Реализовать генератор model card (`aurora-model-card`) и черновик `docs/model_card_100m.md`.
-15. [x] Реализовать n-gram проверку benchmark contamination (`aurora-contamination`).
-16. [x] Добавить опциональный W&B experiment tracker.
-17. [x] Реализовать zero-shot multiple-choice harness (`aurora-zero-shot`).
-18. [x] Добавить агрегацию результатов с mean/std (`aurora-report`).
-19. [x] Добавить бэкапы чекпоинтов и алерты при деградации.
-20. [x] Добавить реестр экспериментов и артефактов (`aurora-registry`).
+### 9.1 Можно сделать без реального корпуса
+
+1. [ ] `P0` Определить лицензию и правила использования.
+2. [ ] `P0` Реализовать hyperparameter sweep runner с генерацией конфигов,
+   запуском и сводкой результатов.
+3. [ ] `P0` Добавить конфиги 10M/30M/300M и инструмент fit scaling law.
+4. [ ] `P1` Реализовать state reset на границах документов и проверить на smoke.
+5. [ ] `P1` Расширить `aurora-ablate` на `n_levels`, `d_state`, `memory_heads`,
+   `n_experts`, `top_k`.
+6. [ ] `P1` Сделать memory-mapped загрузку экспертов и прототип expert cache.
+7. [ ] `P1` Реализовать быстрый ternary matmul и сравнить с dense path.
+8. [ ] `P1` Добавить API reference, troubleshooting и reproduction guide.
+9. [ ] `P2` Смешанная точность по слоям.
+10. [ ] `P2` Схемы обучения и диаграммы.
+
+### 9.2 Требует данных и/или compute
+
+1. [ ] `P0` Собрать и очистить первый реальный RU/EN/code-корпус.
+2. [ ] `P0` Обучить токенизатор 64k и замерить fertility.
+3. [ ] `P0` Подготовить версионированные train/val/test и data card.
+4. [ ] `P0` Прогнать hyperparameter sweep на малом масштабе.
+5. [ ] `P0` Запустить AURORA-100M на 1–2B токенов в двух seed.
+6. [ ] `P0` Обучить Transformer-100M на тех же данных и compute.
+7. [ ] `P0` Прогнать zero-shot/RU/code-бенчмарки и contamination-check.
+8. [ ] `P0` Собрать отчёт с mean/std и сделать вывод по гипотезе.
+9. [ ] `P1` Написать финальные data card и model card для 100M.
+10. [ ] `P1` Принять решение о переходе к абляциям/scaling или смене архитектуры.
 
 ---
 
 ## 10. Definition of Done для любого эксперимента
 
 - [ ] Зафиксирован git commit.
-- [ ] Зафиксирован конфиг и seed.
-- [ ] Зафиксирована версия данных и токенизатора.
+- [ ] Зафиксированы конфиг, seed и параметры запуска.
+- [ ] Зафиксированы версия данных и токенизатора.
 - [ ] Сохранены логи, метрики и чекпоинт.
-- [ ] Указан compute budget и железо.
+- [ ] Указаны compute budget и железо.
 - [ ] Есть baseline для сравнения.
 - [ ] Есть вывод и следующий шаг.
 - [ ] Результат воспроизводим по инструкции.
 
 ---
 
-## 11. Анти-цели и честные ограничения
+## 11. Анти-цели
 
-- [ ] Не сравнивать AURORA-80 с DeepSeek-V3/R1 напрямую без равных данных, compute и бенчмарков.
-- [ ] Не заявлять превосходство по параметрам: 80B total / 11.5B active ≠ 671B total / 37B active.
+- [ ] Не сравнивать AURORA-80 с DeepSeek-V3/R1 напрямую без равных данных,
+  compute и бенчмарков.
+- [ ] Не заявлять превосходство по параметрам: 80B total / 11.5B active ≠
+  671B total / 37B active.
 - [ ] Не запускать 80B, пока не подтверждены scaling laws на 100M–1B.
 - [ ] Не считать smoke-обучение доказательством качества архитектуры.
 - [ ] Не публиковать QAT-результаты без FP baseline.
@@ -503,4 +522,9 @@
 
 ## 12. Критерий успеха проекта
 
-Проект считается успешным, если при **равном active compute и равном числе обученных токенов** AURORA показывает конкурентное или лучшее качество на согласованном наборе бенчмарков, а inference укладывается в целевые 8 GB VRAM. Если гипотеза не подтверждается, это фиксируется как отрицательный результат с воспроизводимыми экспериментами.
+Проект считается успешным, если при равном active compute и равном числе
+обученных токенов AURORA показывает конкурентное или лучшее качество на
+согласованном наборе бенчмарков, а inference укладывается в целевые 8 GB VRAM.
+
+Если гипотеза не подтверждается, это фиксируется как отрицательный результат с
+воспроизводимыми экспериментами, конфигами, логами и чекпоинтами.
