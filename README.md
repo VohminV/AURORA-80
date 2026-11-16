@@ -482,6 +482,27 @@ python -m aurora.training.pretrain \
   --resume runs/aurora_100m/latest.pt
 ```
 
+### Бэкапы чекпоинтов и алерты
+
+```yaml
+training:
+  backup_interval: 1000
+  backup_count: 3
+  backup_dir: runs/aurora_100m_backups
+  degradation_patience: 3
+```
+
+При сохранении `best.pt` или `latest.pt` на шаге, кратном `backup_interval`, копия пишется в `backup_dir` (по умолчанию `<output_dir>/backups`) как `<best|latest>_step_<step>.pt`. Для каждого префикса хранятся только последние `backup_count` копий, старые удаляются. Копирование атомарное; ошибка бэкапа не прерывает обучение. Флаги `--backup-interval`, `--backup-count`, `--backup-dir` переопределяют конфиг.
+
+Алерты отправляются POST-запросом с JSON на webhook из переменной окружения `AURORA_ALERT_WEBHOOK` (URL не попадает в конфиг и чекпоинт):
+
+```bash
+AURORA_ALERT_WEBHOOK=https://example.com/aurora-alerts \
+python -m aurora.training.pretrain --config configs/aurora_100m.yaml
+```
+
+События: `validation_degradation` (после `degradation_patience` validation-замеров без улучшения, один раз за серию), `early_stopping`, `non_finite_loss` и `non_finite_grad_norm`. Payload содержит `event`, `created_utc`, `run_id`, `step` и детали события. Сеть и ошибки доставки не останавливают обучение; при недоступном webhook пишется предупреждение. Алерты не заменяют мониторинг и не ретраятся.
+
 ### QAT с ternary-весами
 
 ```bash
@@ -593,6 +614,7 @@ Eval-отчёт (`reports/smoke_eval.json`) теперь включает `run_m
 - Единый eval harness с per-domain perplexity, dataset_version и git/окружением в JSON-отчёте.
 - Zero-shot multiple-choice harness с log-prob скорингом, per-task accuracy и JSONL-предсказаниями (`aurora-zero-shot`).
 - Агрегация eval/zero-shot отчётов с mean/std по запускам и Markdown-таблицей (`aurora-report`).
+- Ротация бэкапов best/latest-чекпоинтов и необязательные webhook-алерты при деградации, early stopping и non-finite loss/grad.
 - Ternary-квантование, упаковка 2-bit, QAT через straight-through estimator и версионированный AURORA-TQ архив.
 - Offline-калибровка групповых масштабов по минимальной ошибке реконструкции (`--calibrate`).
 - Сравнение FP32/FP16/ternary/INT8/INT4 на одном чекпоинте и датасете (`aurora-quant-bench`).
@@ -605,7 +627,7 @@ Eval-отчёт (`reports/smoke_eval.json`) теперь включает `run_m
 - Автоматический BF16/FP16 autocast на CUDA при генерации и оценке perplexity.
 - CUDA AMP (BF16, FP16+GradScaler) и `torch.compile` (`aot_eager`, `inductor`) проверены на 100M; CUDA-замеры — в `docs/benchmarks.md`.
 - CI (lint, mypy, tests, end-to-end smoke на чистом runner), `Makefile`, benchmark throughput/RAM/latency.
-- 175 тестов: причинность, состояния, память, маршрутизация, квантование, сравнение квантизации, длинный контекст, абляция компонентов, zero-shot оценка, агрегация результатов, обучение, resume, провенанс, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, contamination, статистика корпуса, W&B tracker, курирование корпуса, baseline и инференс.
+- 184 теста: причинность, состояния, память, маршрутизация, квантование, сравнение квантизации, длинный контекст, абляция компонентов, zero-shot оценка, агрегация результатов, обучение, resume, провенанс, чекпоинты, бэкапы и алерты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, contamination, статистика корпуса, W&B tracker, курирование корпуса, baseline и инференс.
 
 ---
 
@@ -630,6 +652,7 @@ AURORA-80/
 │   ├── training/
 │   │   ├── pretrain.py
 │   │   ├── trainer.py
+│   │   ├── alerts.py
 │   │   ├── tracker.py
 │   │   ├── optimizer.py
 │   │   ├── scheduler.py

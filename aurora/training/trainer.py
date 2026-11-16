@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
+import shutil
 import time
 from collections.abc import Sequence
 from contextlib import nullcontext
@@ -26,6 +28,7 @@ from aurora.data.provenance import (
 )
 from aurora.provenance import build_run_metadata, utc_now
 from aurora.quantization import convert_to_ternary
+from aurora.training.alerts import ALERT_WEBHOOK_ENV, AlertNotifier
 from aurora.training.checkpoint import load_checkpoint, save_checkpoint
 from aurora.training.optimizer import create_optimizer
 from aurora.training.scheduler import create_scheduler
@@ -54,6 +57,13 @@ class Trainer:
         self.config = config
         self.training = config.training
         self.logger = logging.getLogger("aurora.trainer")
+        self.notifier: AlertNotifier | None = None
+        alert_url = os.environ.get(ALERT_WEBHOOK_ENV, "").strip()
+        if alert_url:
+            try:
+                self.notifier = AlertNotifier(alert_url, self.logger)
+            except ValueError as error:
+                self.logger.warning("Disabling degradation alerts: %s", error)
         self.device = resolve_device(self.training.device)
         if self.device.type == "cuda" and self.device.index is not None:
             torch.cuda.set_device(self.device)
@@ -110,6 +120,7 @@ class Trainer:
         self.best_val = float("inf")
         self.tokens_seen = 0
         self._evals_without_improvement = 0
+        self._degradation_alerted = False
         self.train_model: torch.nn.Module = self.model
         self.tracker: WandbTracker | None = None
         self.writer: Any | None = None
@@ -298,8 +309,9 @@ class Trainer:
         self.logger.info("Resumed from %s at step %d", path, self.step)
 
     def _save(self, name: str) -> None:
+        destination = self.output_dir / name
         save_checkpoint(
-            self.output_dir / name,
+            destination,
             self.model,
             self.optimizer,
             self.scheduler,
@@ -311,6 +323,48 @@ class Trainer:
             rng_state=torch_rng_state_dict(),
             run_metadata=self.run_metadata,
             metrics=self._metrics_summary(),
+        )
+        self._backup(destination, name.removesuffix(".pt"))
+
+    def _backup(self, source: Path, prefix: str) -> None:
+        interval = self.training.backup_interval
+        if interval <= 0 or self.step <= 0 or self.step % interval != 0:
+            return
+        backup_dir = (
+            Path(self.training.backup_dir)
+            if self.training.backup_dir
+            else self.output_dir / "backups"
+        )
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        destination = backup_dir / f"{prefix}_step_{self.step:09d}.pt"
+        temporary = destination.with_name(destination.name + ".tmp")
+        try:
+            shutil.copy2(source, temporary)
+            os.replace(temporary, destination)
+        except OSError as error:
+            self.logger.warning("Checkpoint backup failed for %s: %s", source, error)
+            return
+        self._prune_backups(backup_dir, prefix)
+
+    def _prune_backups(self, backup_dir: Path, prefix: str) -> None:
+        backups = sorted(backup_dir.glob(f"{prefix}_step_*.pt"))
+        excess = len(backups) - self.training.backup_count
+        for stale in backups[: max(excess, 0)]:
+            try:
+                stale.unlink()
+            except OSError as error:
+                self.logger.warning("Could not remove stale backup %s: %s", stale, error)
+
+    def _alert(self, event: str, **details: Any) -> None:
+        if self.notifier is None:
+            return
+        self.notifier.send(
+            event,
+            {
+                "run_id": self.run_metadata.get("run_id"),
+                "step": self.step,
+                **details,
+            },
         )
 
     @torch.no_grad()
@@ -375,13 +429,41 @@ class Trainer:
         if improved:
             self.best_val = val_loss
             self._evals_without_improvement = 0
+            self._degradation_alerted = False
             self._save("best.pt")
             self.logger.info("New best validation loss: %.4f", val_loss)
         else:
             self._evals_without_improvement += 1
+            degradation_patience = self.training.degradation_patience
+            if (
+                degradation_patience > 0
+                and self._evals_without_improvement >= degradation_patience
+                and not self._degradation_alerted
+            ):
+                self._degradation_alerted = True
+                self.logger.warning(
+                    "Validation degraded for %d evaluations; best loss %.4f",
+                    self._evals_without_improvement,
+                    self.best_val,
+                )
+                self._alert(
+                    "validation_degradation",
+                    validation_loss=val_loss,
+                    best_val=self.best_val,
+                    evals_without_improvement=self._evals_without_improvement,
+                    patience=degradation_patience,
+                )
 
         patience = self.training.early_stopping_patience
-        return patience > 0 and self._evals_without_improvement >= patience
+        should_stop = patience > 0 and self._evals_without_improvement >= patience
+        if should_stop:
+            self._alert(
+                "early_stopping",
+                best_val=self.best_val,
+                evals_without_improvement=self._evals_without_improvement,
+                patience=patience,
+            )
+        return should_stop
 
     def _log_step(
         self,
@@ -534,6 +616,7 @@ class Trainer:
                     self.logger.warning(
                         "Skipping step %d because the loss is not finite", self.step
                     )
+                    self._alert("non_finite_loss", tokens_seen=self.tokens_seen)
                     continue
 
                 if self.scaler is not None:
@@ -550,6 +633,7 @@ class Trainer:
                             "Skipping step %d because the gradient norm is not finite",
                             self.step,
                         )
+                        self._alert("non_finite_grad_norm", tokens_seen=self.tokens_seen)
                         continue
                     self.scaler.step(self.optimizer)
                     self.scaler.update()
@@ -565,6 +649,7 @@ class Trainer:
                             "Skipping step %d because the gradient norm is not finite",
                             self.step,
                         )
+                        self._alert("non_finite_grad_norm", tokens_seen=self.tokens_seen)
                         continue
                     self.optimizer.step()
 

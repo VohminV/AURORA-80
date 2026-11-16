@@ -129,6 +129,10 @@ class TrainingConfig:
     save_interval: int = 1000
     max_tokens: int = 0
     early_stopping_patience: int = 0
+    degradation_patience: int = 0
+    backup_interval: int = 0
+    backup_count: int = 3
+    backup_dir: str = ""
     output_dir: str = "runs/aurora_100m"
     resume: str = ""
     auto_resume: bool = False
@@ -187,6 +191,10 @@ class TrainingConfig:
             raise ValueError("eval and save intervals must be non-negative")
         if self.max_tokens < 0 or self.early_stopping_patience < 0:
             raise ValueError("max_tokens and early_stopping_patience must be non-negative")
+        if self.degradation_patience < 0:
+            raise ValueError("degradation_patience must be non-negative")
+        if self.backup_interval < 0 or self.backup_count < 1:
+            raise ValueError("backup_interval must be non-negative and backup_count positive")
         if self.log_interval <= 0:
             raise ValueError("log_interval must be positive")
         if self.dtype_amp not in {"auto", "bf16", "fp16", "fp32"}:

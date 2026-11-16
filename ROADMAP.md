@@ -22,7 +22,7 @@
 - [x] Git-репозиторий, SSH remote, первый коммит отправлен в `origin/main`.
 - [x] Конфиги `smoke`, `100m`, `100m_qat`, `transformer_100m`, `1b`, `80b`.
 - [x] Расчёт параметров: 100M — 105.73M total / 49.10M active; 1B — 929.49M / 325.51M; 80B — 80.49B / 11.52B; Transformer-100M baseline — 106.28M.
-- [x] 175 тестов; `ruff`, `mypy` проходят.
+- [x] 184 теста; `ruff`, `mypy` проходят.
 - [x] Smoke-обучение, resume, генерация, perplexity, QAT-обучение и QAT-inference.
 - [x] Демонстрационный корпус и скрипт подсчёта параметров.
 - [x] CI, `Makefile`, потоковая подготовка данных с manifest.
@@ -33,6 +33,7 @@
 - [x] Потоковая статистика корпуса: домены, письменности, code-строки и `language_hint` (`aurora-corpus-stats`).
 - [x] Zero-shot multiple-choice harness с log-prob скорингом (`aurora-zero-shot`; прогон на реальных бенчмарках — после 100M).
 - [x] Агрегация eval/zero-shot отчётов с mean/std по запускам (`aurora-report`).
+- [x] Ротация бэкапов best/latest и webhook-алерты при деградации/non-finite.
 - [x] Опциональный W&B-трекер (online/offline) с graceful fallback.
 - [x] Offline-калибровка групповых ternary-масштабов (`--calibrate`).
 - [x] Сравнение FP32/FP16/ternary/INT8/INT4 на одном чекпоинте и датасете (`aurora-quant-bench`).
@@ -153,7 +154,7 @@
 
 ### 1.7 Качество и документация
 
-- [x] `P0` 175 тестов на архитектуру, память, роутер, QAT, обучение, данные, курирование, статистику корпуса, contamination, чекпоинты, провенанс, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, zero-shot оценку, агрегацию результатов, W&B tracker, сравнение квантизации, длинный контекст, абляцию компонентов и inference.
+- [x] `P0` 184 теста на архитектуру, память, роутер, QAT, обучение, данные, курирование, статистику корпуса, contamination, чекпоинты, бэкапы и алерты, провенанс, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, zero-shot оценку, агрегацию результатов, W&B tracker, сравнение квантизации, длинный контекст, абляцию компонентов и inference.
 - [x] `P0` `ruff`, `mypy`, инструкции запуска.
 - [x] `P0` README с ограничениями и научной базой.
 - [x] `P0` Зафиксировать baseline-метрики smoke-модели.
@@ -423,8 +424,8 @@
 - [x] `P0` Авто-resume после падения.
 - [x] `P0` Проверка чекпоинтов на битые тензоры.
 - [x] `P0` Мониторинг non-finite loss/grad.
-- [ ] `P1` Алерты при деградации.
-- [ ] `P1` Backup чекпоинтов.
+- [x] `P1` Алерты при деградации (webhook из `AURORA_ALERT_WEBHOOK`; degradation/early stopping/non-finite; ошибки доставки не фатальны).
+- [x] `P1` Backup чекпоинтов (атомарные копии best/latest с ротацией `--backup-count`).
 
 ### 8.4 Безопасность и право
 
@@ -468,6 +469,7 @@
 16. [x] Добавить опциональный W&B experiment tracker.
 17. [x] Реализовать zero-shot multiple-choice harness (`aurora-zero-shot`).
 18. [x] Добавить агрегацию результатов с mean/std (`aurora-report`).
+19. [x] Добавить бэкапы чекпоинтов и алерты при деградации.
 
 ---
 

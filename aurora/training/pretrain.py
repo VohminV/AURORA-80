@@ -47,6 +47,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--gradient-checkpointing", action="store_true")
     parser.add_argument("--max-tokens", type=int, default=None)
     parser.add_argument("--early-stopping-patience", type=int, default=None)
+    parser.add_argument("--degradation-patience", type=int, default=None)
+    parser.add_argument("--backup-interval", type=int, default=None)
+    parser.add_argument("--backup-count", type=int, default=None)
+    parser.add_argument("--backup-dir", default=None)
     parser.add_argument("--log-level", default="INFO")
     return parser
 
@@ -72,6 +76,10 @@ def main(argv: Sequence[str] | None = None) -> None:
         "seed",
         "max_tokens",
         "early_stopping_patience",
+        "degradation_patience",
+        "backup_interval",
+        "backup_count",
+        "backup_dir",
         "wandb_project",
         "wandb_run_name",
         "wandb_mode",
