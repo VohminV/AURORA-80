@@ -277,6 +277,23 @@ python -m aurora.benchmarks.ablation \
 
 Варианты обучаются с нуля на одних данных, seed и token budget: `core` без памяти и MoE, `core_memory` с памятью, `full` с памятью и MoE. Отчёт содержит параметры (total/active), loss/perplexity, скорость, run id и чекпоинты, а также `loss_delta_vs_core` и `perplexity_ratio_vs_core`. Отключённые компоненты полностью удаляют свои параметры, состояние и лоссы. Smoke-прогон проверяет механику абляции; выводы о вкладе компонентов требуют обученного 100M-чекпоинта и нескольких seed.
 
+### 8. Zero-shot multiple-choice оценка
+
+```bash
+python -m aurora.benchmarks.zero_shot \
+  --checkpoint runs/aurora_100m/best.pt \
+  --task mmlu=benchmarks/mmlu.jsonl \
+  --task hellaswag=benchmarks/hellaswag.jsonl \
+  --tokenizer sentencepiece \
+  --tokenizer-model tokenizer/aurora_64k.model \
+  --max-length 2048 \
+  --normalize-by-length \
+  --output reports/zero_shot.json \
+  --predictions reports/zero_shot_predictions.jsonl
+```
+
+Каждая задача — JSONL с полями `context`, `choices` и `answer` (индекс правильного варианта): `{"context": "...", "choices": ["...", "..."], "answer": 1}`. Harness считает сумму log-prob продолжения каждого варианта после общего контекста и выбирает максимум; `--normalize-by-length` переходит к средней log-prob. `--limit` ограничивает число примеров, `--predictions` пишет построчные предсказания для анализа ошибок. Датасеты нужно предварительно привести к этому формату; harness не содержит загрузчиков MMLU/HellaSwag/ARC/WinoGrande и не выполняет few-shot сборку промптов. Оценка идёт последовательно по вариантам, без батчинга, поэтому на больших бенчмарках она медленная.
+
 ---
 
 ## Обучение на реальном корпусе
@@ -561,6 +578,7 @@ Eval-отчёт (`reports/smoke_eval.json`) теперь включает `run_m
 - Memmap-датасет для токенизированных корпусов и смешивание доменов с весами.
 - Transformer baseline с RoPE и KV-cache, совместимый с trainer/inference/eval.
 - Единый eval harness с per-domain perplexity, dataset_version и git/окружением в JSON-отчёте.
+- Zero-shot multiple-choice harness с log-prob скорингом, per-task accuracy и JSONL-предсказаниями (`aurora-zero-shot`).
 - Ternary-квантование, упаковка 2-bit, QAT через straight-through estimator и версионированный AURORA-TQ архив.
 - Offline-калибровка групповых масштабов по минимальной ошибке реконструкции (`--calibrate`).
 - Сравнение FP32/FP16/ternary/INT8/INT4 на одном чекпоинте и датасете (`aurora-quant-bench`).
@@ -573,7 +591,7 @@ Eval-отчёт (`reports/smoke_eval.json`) теперь включает `run_m
 - Автоматический BF16/FP16 autocast на CUDA при генерации и оценке perplexity.
 - CUDA AMP (BF16, FP16+GradScaler) и `torch.compile` (`aot_eager`, `inductor`) проверены на 100M; CUDA-замеры — в `docs/benchmarks.md`.
 - CI (lint, mypy, tests, end-to-end smoke на чистом runner), `Makefile`, benchmark throughput/RAM/latency.
-- 161 тест: причинность, состояния, память, маршрутизация, квантование, сравнение квантизации, длинный контекст, абляция компонентов, обучение, resume, провенанс, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, contamination, статистика корпуса, W&B tracker, курирование корпуса, baseline и инференс.
+- 168 тестов: причинность, состояния, память, маршрутизация, квантование, сравнение квантизации, длинный контекст, абляция компонентов, zero-shot оценка, обучение, resume, провенанс, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, contamination, статистика корпуса, W&B tracker, курирование корпуса, baseline и инференс.
 
 ---
 
@@ -625,6 +643,7 @@ AURORA-80/
 │   │   ├── quantization.py
 │   │   ├── state_stability.py
 │   │   ├── ablation.py
+│   │   ├── zero_shot.py
 │   │   └── evaluate.py
 │   ├── config.py
 │   ├── generation.py

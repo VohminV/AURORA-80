@@ -346,6 +346,34 @@ the report verifies its `dataset_version`, split size and checksum, then include
 Use `--no-verify-data` to skip rehashing while still keeping the manifest
 metadata.
 
+## Zero-shot report (`zero_shot.json`)
+
+`aurora.benchmarks.zero_shot` reads one JSONL file per task. Each record needs a
+`context` string, a non-empty `choices` list of non-empty strings and an integer
+`answer` index. Field names are configurable with `--context-field`,
+`--choices-field` and `--answer-field`.
+
+| Key | Meaning |
+| --- | --- |
+| `created_utc` | Report timestamp |
+| `run_metadata` | Full checkpoint run metadata |
+| `checkpoint` | Path, step, QAT flag, architecture, parameter count, run id and stored metrics |
+| `evaluation` | Git state and environment |
+| `settings` | Task paths, tokenizer, field names, maximum length, limit, normalization, device and AMP mode |
+| `tasks.<name>` | Sample count, evaluated/skipped counts, total choices, correct count and accuracy |
+
+The score of a choice is the sum of log-probabilities of its tokens conditioned
+on the context; `--normalize-by-length` divides by the number of scored tokens.
+Context is truncated from the left when `context + choice` exceeds
+`--max-length`, then the choice is truncated if needed. Samples whose choices
+cannot be scored after truncation are counted in `skipped` and excluded from
+accuracy. `--predictions` writes one JSONL row per evaluated sample with `task`,
+`index`, `answer`, `prediction`, `correct` and per-choice `scores`.
+
+The harness expects preprocessed multiple-choice files; it does not download
+MMLU/HellaSwag/ARC/WinoGrande or assemble few-shot prompts. Choices are scored in
+separate forward passes, so evaluation is sequential rather than batched.
+
 ## Quantization comparison report (`quantization.json`)
 
 `aurora.benchmarks.quantization` writes one report for all weight-only variants:
