@@ -29,6 +29,7 @@ from aurora.quantization import convert_to_ternary
 from aurora.training.checkpoint import load_checkpoint, save_checkpoint
 from aurora.training.optimizer import create_optimizer
 from aurora.training.scheduler import create_scheduler
+from aurora.training.tracker import WandbTracker
 from aurora.utils import (
     human_int,
     load_torch_rng_state_dict,
@@ -110,6 +111,7 @@ class Trainer:
         self.tokens_seen = 0
         self._evals_without_improvement = 0
         self.train_model: torch.nn.Module = self.model
+        self.tracker: WandbTracker | None = None
         self.writer: Any | None = None
         if self.training.tensorboard:
             try:
@@ -351,6 +353,11 @@ class Trainer:
         if self.writer is not None:
             self.writer.add_scalar("validation/loss", val_loss, self.step)
             self.writer.add_scalar("validation/perplexity", perplexity, self.step)
+        if self.tracker is not None:
+            self.tracker.log(
+                {"validation/loss": val_loss, "validation/perplexity": perplexity},
+                step=self.step,
+            )
         self.last_validation_metrics = {
             "loss": val_loss,
             "perplexity": perplexity,
@@ -386,7 +393,7 @@ class Trainer:
     ) -> None:
         elapsed = time.perf_counter() - self._last_log_time
         tokens_per_second = self._tokens_since_log / max(elapsed, 1e-9)
-        learning_rate = self.scheduler.get_last_lr()[0]
+        learning_rate = float(self.scheduler.get_last_lr()[0])
         tokens_seen = self.step * self.training.batch_size * self.training.grad_accum_steps
         tokens_seen *= self.training.seq_len
         self.logger.info(
@@ -403,14 +410,23 @@ class Trainer:
             tokens_per_second,
             tokens_seen / 1_000_000,
         )
+        train_metrics = {
+            "lm_loss": lm_loss,
+            "aux_loss": aux_loss,
+            "memory_loss": memory_loss,
+            "consistency_loss": consistency_loss,
+            "lr": learning_rate,
+            "grad_norm": grad_norm,
+            "tokens_per_second": tokens_per_second,
+        }
         if self.writer is not None:
-            self.writer.add_scalar("train/lm_loss", lm_loss, self.step)
-            self.writer.add_scalar("train/aux_loss", aux_loss, self.step)
-            self.writer.add_scalar("train/memory_loss", memory_loss, self.step)
-            self.writer.add_scalar("train/consistency_loss", consistency_loss, self.step)
-            self.writer.add_scalar("train/lr", learning_rate, self.step)
-            self.writer.add_scalar("train/grad_norm", grad_norm, self.step)
-            self.writer.add_scalar("train/tokens_per_second", tokens_per_second, self.step)
+            for name, value in train_metrics.items():
+                self.writer.add_scalar(f"train/{name}", value, self.step)
+        if self.tracker is not None:
+            self.tracker.log(
+                {f"train/{name}": value for name, value in train_metrics.items()},
+                step=self.step,
+            )
         self.last_train_metrics = {
             "lm_loss": lm_loss,
             "aux_loss": aux_loss,
@@ -444,6 +460,7 @@ class Trainer:
         resume_path = self._resolve_resume_path()
         if resume_path is not None:
             self._resume(resume_path)
+        self.tracker = WandbTracker.start(self.config, self.output_dir, self.run_metadata)
         self._maybe_enable_qat(self.step)
         self._set_train_model()
         self.model.train()
@@ -613,6 +630,8 @@ class Trainer:
             self._save("latest.pt")
             raise
         finally:
+            if self.tracker is not None:
+                self.tracker.finish()
             if self.writer is not None:
                 self.writer.flush()
                 self.writer.close()

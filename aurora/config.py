@@ -138,6 +138,10 @@ class TrainingConfig:
     compile: bool = False
     gradient_checkpointing: bool = False
     tensorboard: bool = False
+    wandb: bool = False
+    wandb_project: str = "aurora-80"
+    wandb_run_name: str = ""
+    wandb_mode: str = "online"
 
     qat_enabled: bool = False
     qat_start_step: int = 0
@@ -187,6 +191,10 @@ class TrainingConfig:
             raise ValueError("log_interval must be positive")
         if self.dtype_amp not in {"auto", "bf16", "fp16", "fp32"}:
             raise ValueError("dtype_amp must be one of auto, bf16, fp16, fp32")
+        if not self.wandb_project:
+            raise ValueError("wandb_project must not be empty")
+        if self.wandb_mode not in {"online", "offline", "disabled"}:
+            raise ValueError("wandb_mode must be one of online, offline, disabled")
         if self.qat_group_size <= 0 or self.qat_min_features <= 0:
             raise ValueError("qat_group_size and qat_min_features must be positive")
         if self.qat_start_step < 0:

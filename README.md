@@ -509,6 +509,17 @@ python -m aurora.training.pretrain \
 
 Trainer пишет append-only `runs/<run>/metrics.jsonl` со строками `train`, `validation` и `resume`; каждая строка содержит `run_id`, шаг, timestamp и метрики. При resume `run_id` сохраняется, а fingerprint данных сравнивается с сохранённым: изменение содержимого `.bin`, mixture-весов, split или версии manifest приводит к ошибке `Dataset provenance mismatch`.
 
+### Логирование
+
+```bash
+pip install -e ".[logging]"
+python -m aurora.training.pretrain --config configs/smoke.yaml --tensorboard
+python -m aurora.training.pretrain --config configs/smoke.yaml \
+  --wandb --wandb-project aurora-80 --wandb-mode offline
+```
+
+TensorBoard и W&B включаются независимо; если пакет не установлен или `wandb.init` не удался, обучение продолжается с предупреждением. W&B получает полный конфиг, шаг и метрики `train/*`/`validation/*`, а при resume использует сохранённый `run_id` как id рана. Режим `--wandb-mode offline` не требует сети.
+
 Eval-отчёт (`reports/smoke_eval.json`) теперь включает `run_metadata` чекпоинта, git/окружение самой оценки и `dataset_version` каждого проверенного файла. Формат описан в `docs/formats.md`.
 
 ---
@@ -550,7 +561,7 @@ Eval-отчёт (`reports/smoke_eval.json`) теперь включает `run_m
 - Автоматический BF16/FP16 autocast на CUDA при генерации и оценке perplexity.
 - CUDA AMP (BF16, FP16+GradScaler) и `torch.compile` (`aot_eager`, `inductor`) проверены на 100M; CUDA-замеры — в `docs/benchmarks.md`.
 - CI (lint, mypy, tests, end-to-end smoke на чистом runner), `Makefile`, benchmark throughput/RAM/latency.
-- 151 тест: причинность, состояния, память, маршрутизация, квантование, сравнение квантизации, длинный контекст, абляция компонентов, обучение, resume, провенанс, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, contamination, курирование корпуса, baseline и инференс.
+- 155 тестов: причинность, состояния, память, маршрутизация, квантование, сравнение квантизации, длинный контекст, абляция компонентов, обучение, resume, провенанс, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, contamination, W&B tracker, курирование корпуса, baseline и инференс.
 
 ---
 
@@ -575,6 +586,7 @@ AURORA-80/
 │   ├── training/
 │   │   ├── pretrain.py
 │   │   ├── trainer.py
+│   │   ├── tracker.py
 │   │   ├── optimizer.py
 │   │   ├── scheduler.py
 │   │   └── checkpoint.py

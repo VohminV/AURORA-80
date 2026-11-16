@@ -35,6 +35,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--device", default=None)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--tensorboard", action="store_true")
+    parser.add_argument("--wandb", action="store_true")
+    parser.add_argument("--wandb-project", default=None)
+    parser.add_argument("--wandb-run-name", default=None)
+    parser.add_argument(
+        "--wandb-mode",
+        choices=["online", "offline", "disabled"],
+        default=None,
+    )
     parser.add_argument("--no-compile", action="store_true")
     parser.add_argument("--gradient-checkpointing", action="store_true")
     parser.add_argument("--max-tokens", type=int, default=None)
@@ -64,12 +72,17 @@ def main(argv: Sequence[str] | None = None) -> None:
         "seed",
         "max_tokens",
         "early_stopping_patience",
+        "wandb_project",
+        "wandb_run_name",
+        "wandb_mode",
     ):
         value = getattr(args, field_name)
         if value is not None:
             overrides[field_name] = value
     if args.tensorboard:
         overrides["tensorboard"] = True
+    if args.wandb:
+        overrides["wandb"] = True
     if args.auto_resume:
         overrides["auto_resume"] = True
     if args.no_compile:

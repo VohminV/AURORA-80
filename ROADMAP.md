@@ -22,7 +22,7 @@
 - [x] Git-репозиторий, SSH remote, первый коммит отправлен в `origin/main`.
 - [x] Конфиги `smoke`, `100m`, `100m_qat`, `transformer_100m`, `1b`, `80b`.
 - [x] Расчёт параметров: 100M — 105.73M total / 49.10M active; 1B — 929.49M / 325.51M; 80B — 80.49B / 11.52B; Transformer-100M baseline — 106.28M.
-- [x] 151 тест; `ruff`, `mypy` проходят.
+- [x] 155 тестов; `ruff`, `mypy` проходят.
 - [x] Smoke-обучение, resume, генерация, perplexity, QAT-обучение и QAT-inference.
 - [x] Демонстрационный корпус и скрипт подсчёта параметров.
 - [x] CI, `Makefile`, потоковая подготовка данных с manifest.
@@ -30,6 +30,7 @@
 - [x] `L_memory`/`L_consistency`, throughput/RAM benchmark, Transformer baseline, eval harness.
 - [x] Потоковое курирование корпуса: exact/near dedup, фильтры качества, PII drop/redact и JSON-отчёт.
 - [x] Потоковая проверка benchmark contamination по word n-граммам (`aurora-contamination`).
+- [x] Опциональный W&B-трекер (online/offline) с graceful fallback.
 - [x] Offline-калибровка групповых ternary-масштабов (`--calibrate`).
 - [x] Сравнение FP32/FP16/ternary/INT8/INT4 на одном чекпоинте и датасете (`aurora-quant-bench`).
 - [x] Проверка стабильности состояния на 4k/8k/16k/32k с опциональным reset (`aurora-state-check`; smoke/CPU).
@@ -99,7 +100,7 @@
 - [x] `P1` Gradient checkpointing для длинных последовательностей (CPU-тесты; CUDA: −24% VRAM, −41% throughput).
 - [ ] `P1` Подобрать learning rate, betas, warmup, weight decay на 100M.
 - [x] `P1` Early stopping и остановка по compute budget (`max_tokens`).
-- [ ] `P1` Эксперимент-трекер: W&B или MLflow.
+- [x] `P1` Эксперимент-трекер: опциональный W&B с online/offline режимами и graceful fallback.
 - [ ] `P2` Curriculum learning и context extension.
 
 ### 1.4 Данные и токенизация
@@ -149,7 +150,7 @@
 
 ### 1.7 Качество и документация
 
-- [x] `P0` 151 тест на архитектуру, память, роутер, QAT, обучение, данные, курирование, contamination, чекпоинты, провенанс, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, сравнение квантизации, длинный контекст, абляцию компонентов и inference.
+- [x] `P0` 155 тестов на архитектуру, память, роутер, QAT, обучение, данные, курирование, contamination, чекпоинты, провенанс, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, W&B tracker, сравнение квантизации, длинный контекст, абляцию компонентов и inference.
 - [x] `P0` `ruff`, `mypy`, инструкции запуска.
 - [x] `P0` README с ограничениями и научной базой.
 - [x] `P0` Зафиксировать baseline-метрики smoke-модели.
@@ -461,6 +462,7 @@
 13. [ ] Написать финальные data card и model card для обученного 100M (генераторы готовы; нужны реальные данные и чекпоинт).
 14. [x] Реализовать генератор model card (`aurora-model-card`) и черновик `docs/model_card_100m.md`.
 15. [x] Реализовать n-gram проверку benchmark contamination (`aurora-contamination`).
+16. [x] Добавить опциональный W&B experiment tracker.
 
 ---
 
