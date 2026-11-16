@@ -72,6 +72,8 @@ def _checkpoint_entry(path: Path, verify: bool) -> dict[str, Any]:
 def _report_kind(report: dict[str, Any]) -> str:
     if isinstance(report.get("metrics"), list) and isinstance(report.get("reports"), list):
         return "summary"
+    if isinstance(report.get("trials"), list) and isinstance(report.get("configurations"), list):
+        return "sweep"
     results = report.get("results")
     if isinstance(results, dict) and results:
         values = [value for value in results.values() if isinstance(value, dict)]
@@ -149,6 +151,20 @@ def _report_summary(report: dict[str, Any], kind: str) -> dict[str, Any]:
         return {
             "lengths": settings.get("lengths"),
             "peak_rss_mb": _number(report.get("peak_rss_mb")),
+        }
+    if kind == "sweep":
+        best = report.get("best")
+        if not isinstance(best, dict):
+            best = {}
+        summary = report.get("summary")
+        if not isinstance(summary, dict):
+            summary = {}
+        return {
+            "trials": len(report["trials"]),
+            "completed": summary.get("completed"),
+            "failed": summary.get("failed"),
+            "best_overrides": best.get("overrides"),
+            "best_mean_final_loss": _number(best.get("mean_final_loss")),
         }
     if kind == "dataset_manifest":
         outputs = report.get("outputs")

@@ -44,6 +44,8 @@
 - [x] Проверка чекпоинтов на обязательные ключи, версию и non-finite тензоры.
 - [x] Ротация бэкапов best/latest и webhook-алерты при деградации.
 - [x] Опциональные TensorBoard и W&B (online/offline, graceful fallback).
+- [x] Hyperparameter sweep runner: сетка параметров, seeds, генерация
+  конфигов, запуск и сводка (`aurora-sweep`).
 
 **Данные и токенизация**
 
@@ -92,7 +94,7 @@
 - [x] CI: lint, mypy, tests и end-to-end smoke на чистом runner.
 - [x] Docker CPU/CUDA, `Makefile`.
 - [x] ADR и документация форматов.
-- [x] 190 тестов; `ruff`, `mypy` и format-check проходят.
+- [x] 208 тестов; `ruff`, `mypy` и format-check проходят.
 
 ### 0.2 Чего ещё нет
 
@@ -129,6 +131,8 @@ throughput; CUDA eager медленнее CPU из-за последовател
   runtime.
 - `aurora-zero-shot`, `aurora-report` и `aurora-registry` готовы как инструменты,
   но реальные бенчмарки и multi-seed отчёты ещё не получены.
+- `aurora-sweep` готов как инструмент, но sweep-протокол LR/betas/warmup/weight
+  decay на малом масштабе ещё не проведён и не зафиксирован.
 
 ---
 
@@ -141,7 +145,7 @@ throughput; CUDA eager медленнее CPU из-за последовател
 - [x] `P0` Обучение, validation, checkpoints, resume, QAT.
 - [x] `P0` Данные: prepare, manifest, versioning, mixture, document split.
 - [x] `P0` Inference: generation, perplexity, HTTP API, batched/streaming.
-- [x] `P0` 190 тестов, `ruff`, `mypy`, end-to-end smoke на чистом runner.
+- [x] `P0` 208 тестов, `ruff`, `mypy`, end-to-end smoke на чистом runner.
 - [x] `P0` Проверены AMP, gradient checkpointing и `torch.compile` на CUDA.
 - [x] `P0` Замерены throughput, память и latency прототипа (CPU и CUDA).
 
@@ -179,7 +183,8 @@ throughput; CUDA eager медленнее CPU из-за последовател
 
 ### 2.3 Обучение
 
-- [ ] `P0` Реализовать hyperparameter sweep для LR/betas/warmup/weight decay.
+- [x] `P0` Реализовать hyperparameter sweep для LR/betas/warmup/weight decay
+  (`aurora-sweep`: сетка, seeds, генерация конфигов, запуск и сводка).
 - [ ] `P0` Провести sweep на малом масштабе и зафиксировать протокол.
 - [ ] `P0` Обучить AURORA-100M на 1–2 млрд токенов.
 - [ ] `P0` Повторить запуск минимум с двумя seed (или два независимых прогона).
@@ -465,8 +470,8 @@ throughput; CUDA eager медленнее CPU из-за последовател
 ### 9.1 Можно сделать без реального корпуса
 
 1. [ ] `P0` Определить лицензию и правила использования.
-2. [ ] `P0` Реализовать hyperparameter sweep runner с генерацией конфигов,
-   запуском и сводкой результатов.
+2. [x] `P0` Реализовать hyperparameter sweep runner с генерацией конфигов,
+   запуском и сводкой результатов (`aurora-sweep`).
 3. [ ] `P0` Добавить конфиги 10M/30M/300M и инструмент fit scaling law.
 4. [ ] `P1` Реализовать state reset на границах документов и проверить на smoke.
 5. [ ] `P1` Расширить `aurora-ablate` на `n_levels`, `d_state`, `memory_heads`,

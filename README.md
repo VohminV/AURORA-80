@@ -318,7 +318,7 @@ python -m aurora.registry \
   --markdown reports/registry.md
 ```
 
-`aurora-registry` рекурсивно собирает `*.pt`-чекпоинты и `*.json`-отчёты, группирует их по `run_metadata.run_id` и пишет JSON/Markdown с git commit, шагом, seed, версиями датасетов и сводкой метрик. Отчёты распознаются как eval, zero-shot, quantization, ablation, state stability, сводный отчёт или dataset manifest; неизвестные JSON помечаются `unknown`. Метаданные чекпоинтов читаются через `weights_only=True` и `mmap`, поэтому большие веса не обязаны полностью помещаться в RAM. `--verify` дополнительно считает SHA-256 всех артефактов и читает их целиком. Битые файлы попадают в `errors`, но не прерывают сбор. Реестр не проверяет finite-тензоры и качество моделей; для этого есть `aurora-evaluate` и валидация чекпоинтов при загрузке.
+`aurora-registry` рекурсивно собирает `*.pt`-чекпоинты и `*.json`-отчёты, группирует их по `run_metadata.run_id` и пишет JSON/Markdown с git commit, шагом, seed, версиями датасетов и сводкой метрик. Отчёты распознаются как eval, zero-shot, quantization, ablation, state stability, sweep, сводный отчёт или dataset manifest; неизвестные JSON помечаются `unknown`. Метаданные чекпоинтов читаются через `weights_only=True` и `mmap`, поэтому большие веса не обязаны полностью помещаться в RAM. `--verify` дополнительно считает SHA-256 всех артефактов и читает их целиком. Битые файлы попадают в `errors`, но не прерывают сбор. Реестр не проверяет finite-тензоры и качество моделей; для этого есть `aurora-evaluate` и валидация чекпоинтов при загрузке.
 
 ---
 
@@ -487,6 +487,29 @@ python -m aurora.training.pretrain \
 
 `--gradient-checkpointing` включает activation checkpointing, `--max-tokens` останавливает обучение по бюджету обработанных токенов, а `--early-stopping-patience` — после заданного числа validation-замеров без улучшения (требуется `--val-path`).
 
+### Hyperparameter sweep
+
+```bash
+python -m aurora.sweep \
+  --spec configs/sweeps/smoke_lr.yaml \
+  --output reports/smoke_sweep.json \
+  --markdown reports/smoke_sweep.md
+```
+
+Sweep-спека задаёт базовый конфиг, сетку параметров, seeds и token budget:
+
+```yaml
+base: configs/smoke.yaml
+output_dir: runs/sweeps/smoke_lr
+max_steps: 25
+seeds: [1, 2]
+parameters:
+  training.learning_rate: [0.0001, 0.0003]
+  training.weight_decay: [0.0, 0.1]
+```
+
+`aurora-sweep` строит декартово произведение параметров, для каждого trial пишет собственный `config.yaml` в `output_dir/<trial>/` и обучает модель на одних и тех же train/val-файлах с одинаковым token budget. Сетка ограничена `--max-trials` (по умолчанию 128). Тюнить можно любые поля `model.*` и оптимизационные поля `training.learning_rate`, `weight_decay`, `beta1`, `beta2`, `adam_eps`, `warmup_steps`, `min_lr_ratio`, `grad_clip`; seeds задаются отдельным списком. `--dry-run` только генерирует конфиги без обучения, `--train-path`, `--val-path`, `--device` и `--max-steps` переопределяют базу. Отчёт содержит каждый trial с loss/perplexity, tokens/s, параметрами и run id, а также конфигурации, ранжированные по среднему validation loss по seeds. Ошибка отдельного trial записывается в `failed` и не прерывает sweep. Сравнение не проверяет равенство compute при изменении `model.*`: такие trials меняют число параметров и стоимость шага.
+
 ### Возобновление обучения
 
 ```bash
@@ -634,6 +657,7 @@ Eval-отчёт (`reports/smoke_eval.json`) теперь включает `run_m
 - Сравнение FP32/FP16/ternary/INT8/INT4 на одном чекпоинте и датасете (`aurora-quant-bench`).
 - Проверка стабильности состояния на 4k–32k с опциональным reset (`aurora-state-check`).
 - Абляция `core`/`core_memory`/`full` с равным token budget (`aurora-ablate`).
+- Hyperparameter sweep runner с генерацией конфигов, seeds, запуском и сводкой по validation loss (`aurora-sweep`).
 - Загрузка чекпоинтов для инференса с автоматическим включением ternary-режима.
 - Генерация с temperature, top-k, top-p и repetition penalty; батчевый и streaming-режимы.
 - HTTP API для генерации (`aurora-serve`) и защита от слишком больших запросов.
@@ -641,7 +665,7 @@ Eval-отчёт (`reports/smoke_eval.json`) теперь включает `run_m
 - Автоматический BF16/FP16 autocast на CUDA при генерации и оценке perplexity.
 - CUDA AMP (BF16, FP16+GradScaler) и `torch.compile` (`aot_eager`, `inductor`) проверены на 100M; CUDA-замеры — в `docs/benchmarks.md`.
 - CI (lint, mypy, tests, end-to-end smoke на чистом runner), `Makefile`, benchmark throughput/RAM/latency.
-- 190 тестов: причинность, состояния, память, маршрутизация, квантование, сравнение квантизации, длинный контекст, абляция компонентов, zero-shot оценка, агрегация результатов, реестр экспериментов, обучение, resume, провенанс, чекпоинты, бэкапы и алерты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, contamination, статистика корпуса, W&B tracker, курирование корпуса, baseline и инференс.
+- 208 тестов: причинность, состояния, память, маршрутизация, квантование, сравнение квантизации, длинный контекст, абляция компонентов, hyperparameter sweep, zero-shot оценка, агрегация результатов, реестр экспериментов, обучение, resume, провенанс, чекпоинты, бэкапы и алерты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, contamination, статистика корпуса, W&B tracker, курирование корпуса, baseline и инференс.
 
 ---
 
@@ -704,6 +728,7 @@ AURORA-80/
 │   ├── registry.py
 │   ├── report.py
 │   ├── server.py
+│   ├── sweep.py
 │   └── utils.py
 ├── configs/
 ├── docs/
@@ -750,13 +775,14 @@ mypy aurora
 - Курирование корпуса реализовано (`aurora-curate`), но на реальном корпусе ещё не прогонялось; точный и near-dedup индексы хранятся в RAM и не рассчитаны на миллиарды документов без шардирования. Data mixture поддерживается через `train_paths`/`train_weights`, подготовка данных потоковая. `aurora-corpus-stats` даёт эвристическое распределение языков/доменов, но не заменяет language identification и не считает токены.
 - Нет распределённого обучения и C++/CUDA runtime. AURORA-TQ v1 реализован, но быстрый ternary matmul и memory-mapped загрузка экспертов ещё не сделаны.
 - Пропускная способность RAM и предсказательная загрузка экспертов для 8 GB VRAM ещё не реализованы.
+- `aurora-sweep` реализован как инструмент, но sweep LR/betas/warmup/weight decay на реальном корпусе ещё не проведён; smoke-sweep проверяет только механику генерации конфигов, запуска и сводки.
 
 ---
 
 ## Документация
 
 - `docs/benchmarks.md` — замеры и команды воспроизведения.
-- `docs/formats.md` — формат чекпоинтов, manifest, model card, отчётов corpus stats/contamination/zero-shot/сводного/реестра и AURORA-TQ.
+- `docs/formats.md` — формат чекпоинтов, manifest, model card, отчётов corpus stats/contamination/zero-shot/сводного/реестра/sweep и AURORA-TQ.
 - `docs/model_card_100m.md` — черновик model card для конфигурации AURORA-100M.
 - `docs/adr/` — architecture decision records.
 

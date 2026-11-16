@@ -55,6 +55,8 @@ logs/
 /reports/smoke_quantization.json
 /reports/state_stability.json
 /reports/smoke_ablation.json
+/reports/smoke_sweep.json
+/reports/smoke_sweep.md
 /reports/data_card_smoke.md
 /reports/model_card_smoke.md
 

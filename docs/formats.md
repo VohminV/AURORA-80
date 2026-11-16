@@ -426,8 +426,8 @@ Checkpoint entries contain `step`, `qat_active`, `best_val`, `format_version`,
 and the full config. Checkpoint tensors are loaded with `weights_only=True` and
 `mmap=True`; finiteness validation is intentionally skipped. Report entries are
 classified as `eval`, `zero_shot`, `quantization`, `ablation`,
-`state_stability`, `summary` or `dataset_manifest`; other JSON objects become
-`unknown`. Reports and legacy checkpoints without a `run_id` are grouped by
+`state_stability`, `summary`, `sweep` or `dataset_manifest`; other JSON objects
+become `unknown`. Reports and legacy checkpoints without a `run_id` are grouped by
 parent directory. `--verify` hashes every artifact fully, which can be slow for
 large checkpoints.
 
@@ -495,3 +495,57 @@ trained from scratch with the same seed, data and token budget. When `core` is
 present, the other variants also receive `loss_delta_vs_core` and
 `perplexity_ratio_vs_core`. Disabled branches remove their parameters, state and
 losses rather than masking them at runtime.
+
+## Hyperparameter sweep report (`sweep.json`)
+
+`aurora.sweep` reads a sweep spec and writes one report for the whole grid:
+
+| Key | Meaning |
+| --- | --- |
+| `format_version` | Sweep report schema version (currently `1`) |
+| `created_utc` | Report timestamp |
+| `spec` | Sweep spec path, or `null` for a programmatic run |
+| `base_config` | Base experiment config used by every trial |
+| `architecture` | Model architecture from the base config |
+| `settings` | Grid, effective seeds, steps, sequence/batch sizes, token budget, device, output root, trial cap and `dry_run` |
+| `summary` | Trial count split into `completed`, `failed` and `planned` |
+| `trials[]` | Per-trial name, seed, overrides, status, paths, resolved config and result |
+| `trials[].config_path` | Generated per-trial YAML config |
+| `trials[].status` | `completed`, `failed` or `planned` (dry run) |
+| `trials[].validation` | Final loss, final perplexity and best validation loss |
+| `trials[].error` | Exception text for a failed trial |
+| `configurations[]` | Groups of trials with identical overrides, ranked by mean final validation loss |
+| `configurations[].mean_final_loss` | Mean over completed seeds, `null` if no numeric loss |
+| `configurations[].std_final_loss` | Sample standard deviation (`ddof=1`) over seeds |
+| `best` | Top configuration by mean final validation loss, or `null` |
+| `evaluation` | Git state and environment (omitted in dry runs) |
+| `dataset` | Train/validation sources with SHA-256 and `dataset_version` (omitted in dry runs) |
+| `limitations` | Compute comparability and statistical caveats |
+
+The spec file has the following shape:
+
+```yaml
+base: configs/smoke.yaml
+output_dir: runs/sweeps/smoke_lr
+max_steps: 25
+seeds: [1, 2]
+parameters:
+  training.learning_rate: [0.0001, 0.0003]
+  training.weight_decay: [0.0, 0.1]
+```
+
+`base` is required. Unknown keys, empty parameter lists, duplicate seeds,
+non-positive `max_steps`, empty output paths and non-tunable training fields are
+rejected. Tunable training fields are `learning_rate`, `weight_decay`, `beta1`,
+`beta2`, `adam_eps`, `warmup_steps`, `min_lr_ratio` and `grad_clip`; every
+`model.*` field is accepted. Values are type-checked against the current config
+and the trial config is re-validated before training. The grid is the Cartesian
+product of sorted parameter names; each configuration is repeated for every
+seed. The number of trials is capped by `--max-trials` (default 128).
+
+Every trial shares the same train/validation files and `max_steps`; the
+per-trial output directory receives `config.yaml`, `metrics.jsonl` and
+checkpoints. `--dry-run` writes the configs and returns `planned` trials without
+touching the data. In a real run a trial that raises is marked `failed` and the
+sweep continues. Failure to resolve the base config, dataset files or the trial
+cap aborts the whole sweep before training.

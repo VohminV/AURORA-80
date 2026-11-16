@@ -1,0 +1,7 @@
+base: configs/smoke.yaml
+output_dir: runs/sweeps/smoke_lr
+max_steps: 25
+seeds: [1, 2]
+parameters:
+  training.learning_rate: [0.0001, 0.0003]
+  training.weight_decay: [0.0, 0.1]

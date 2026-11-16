@@ -6,7 +6,7 @@ IMAGE ?= aurora-80:cpu
 CONFIG ?= configs/aurora_100m.yaml
 
 .PHONY: install install-dev test lint format format-check check smoke-data smoke-train \
-	smoke-generate smoke-perplexity eval quant-compare state-check ablate profile benchmark \
+	smoke-generate smoke-perplexity eval quant-compare state-check ablate sweep profile benchmark \
 	benchmark-cuda data-card model-card docker-build clean
 
 install:
@@ -90,6 +90,13 @@ ablate:
 		--config configs/smoke.yaml \
 		--variants core core_memory full \
 		--output reports/smoke_ablation.json
+
+sweep:
+	mkdir -p reports
+	$(PYTHON) -m aurora.sweep \
+		--spec configs/sweeps/smoke_lr.yaml \
+		--output reports/smoke_sweep.json \
+		--markdown reports/smoke_sweep.md
 
 profile:
 	mkdir -p reports
