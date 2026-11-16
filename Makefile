@@ -1,9 +1,11 @@
 PYTHON ?= python
+CUDA_PYTHON ?= .venv-cuda/bin/python
 PIP ?= $(PYTHON) -m pip
 CONFIG ?= configs/aurora_100m.yaml
 
 .PHONY: install install-dev test lint format format-check check smoke-data smoke-train \
-	smoke-generate smoke-perplexity eval quant-compare profile benchmark clean
+	smoke-generate smoke-perplexity eval quant-compare state-check ablate profile benchmark \
+	benchmark-cuda clean
 
 install:
 	$(PIP) install -e ".[tokenizer]"
@@ -72,6 +74,21 @@ quant-compare:
 		--min-features 16 \
 		--output reports/smoke_quantization.json
 
+state-check:
+	mkdir -p reports
+	$(PYTHON) -m aurora.benchmarks.state_stability \
+		--checkpoint runs/smoke/best.pt \
+		--lengths 4096 8192 16384 32768 \
+		--chunk-size 256 \
+		--output reports/state_stability.json
+
+ablate:
+	mkdir -p reports
+	$(PYTHON) -m aurora.benchmarks.ablation \
+		--config configs/smoke.yaml \
+		--variants core core_memory full \
+		--output reports/smoke_ablation.json
+
 profile:
 	mkdir -p reports
 	$(PYTHON) scripts/profile_components.py --config $(CONFIG) \
@@ -80,6 +97,18 @@ profile:
 benchmark:
 	mkdir -p reports
 	$(PYTHON) scripts/benchmark.py --config $(CONFIG) --output reports/benchmark.json
+
+benchmark-cuda:
+	mkdir -p reports
+	$(CUDA_PYTHON) scripts/benchmark.py \
+		--config $(CONFIG) \
+		--device cuda \
+		--seq-len 512 \
+		--batch-size 1 \
+		--train-steps 3 \
+		--inference-steps 3 \
+		--generation-tokens 4 \
+		--output reports/benchmark_cuda.json
 
 clean:
 	rm -rf runs .pytest_cache .mypy_cache .ruff_cache

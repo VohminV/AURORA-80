@@ -30,7 +30,8 @@ class AuroraModel(nn.Module):
         self.apply(lambda module: init_module_weights(module, config.init_std))
         for block in self.blocks:
             assert isinstance(block, AuroraBlock)
-            block.memory.reset_gate_biases(config.memory_decay_init, config.memory_write_init)
+            if block.use_memory:
+                block.memory.reset_gate_biases(config.memory_decay_init, config.memory_write_init)
         scale_residual_outputs(self, config.n_layers)
 
     def init_state(self, batch_size: int, device: torch.device) -> AuroraState:

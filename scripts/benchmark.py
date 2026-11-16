@@ -17,7 +17,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from aurora.architecture.factory import build_model
+from aurora.architecture.factory import build_model, set_gradient_checkpointing
 from aurora.config import ExperimentConfig, load_config
 from aurora.generation import generate
 from aurora.inference import model_output
@@ -48,6 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="inductor",
         choices=["inductor", "aot_eager", "eager"],
     )
+    parser.add_argument("--gradient-checkpointing", action="store_true")
     return parser
 
 
@@ -256,6 +257,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     config = load_config(args.config)
     device = resolve_device(args.device)
     model = build_model(config.model).to(device)
+    if args.gradient_checkpointing:
+        set_gradient_checkpointing(model, True)
     if args.compile:
         model = torch.compile(model, backend=args.compile_backend)  # type: ignore[assignment]
     total_parameters, active_parameters = parameter_counts(model)
@@ -285,6 +288,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             "generation_tokens": args.generation_tokens,
             "compile": args.compile,
             "compile_backend": args.compile_backend if args.compile else None,
+            "gradient_checkpointing": args.gradient_checkpointing,
             "dtype_amp": config.training.dtype_amp,
         },
         "train": _benchmark_training(model, config, device, input_ids, args.train_steps, scaler),

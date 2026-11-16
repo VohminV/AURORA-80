@@ -22,35 +22,40 @@ class AuroraBlock(nn.Module):
             config.d_model, config.layer_scale_init, config.dropout
         )
 
-        self.norm_memory = RMSNorm(config.d_model, config.norm_eps)
-        self.memory = AssociativeMemory(
-            config.d_model,
-            config.memory_heads,
-            decay_init=config.memory_decay_init,
-            write_init=config.memory_write_init,
-            epsilon=config.memory_epsilon,
-            dropout=config.dropout,
-            norm_eps=config.norm_eps,
-        )
-        self.integrate_memory = ResidualIntegration(
-            config.d_model, config.layer_scale_init, config.dropout
-        )
+        self.use_memory = config.use_memory
+        if self.use_memory:
+            self.norm_memory = RMSNorm(config.d_model, config.norm_eps)
+            self.memory = AssociativeMemory(
+                config.d_model,
+                config.memory_heads,
+                decay_init=config.memory_decay_init,
+                write_init=config.memory_write_init,
+                epsilon=config.memory_epsilon,
+                dropout=config.dropout,
+                norm_eps=config.norm_eps,
+            )
+            self.integrate_memory = ResidualIntegration(
+                config.d_model, config.layer_scale_init, config.dropout
+            )
 
-        self.norm_moe = RMSNorm(config.d_model, config.norm_eps)
-        self.moe = MoE(
-            config.d_model,
-            config.n_experts,
-            config.top_k,
-            config.expert_hidden,
-            dropout=config.dropout,
-            aux_loss_coef=config.aux_loss_coef,
-            router_z_loss_coef=config.router_z_loss_coef,
-            router_jitter=config.router_jitter,
-        )
-        self.integrate_moe = ResidualIntegration(
-            config.d_model, config.layer_scale_init, config.dropout
-        )
-        self.track_memory_losses = (
+        self.use_moe = config.use_moe
+        if self.use_moe:
+            self.norm_moe = RMSNorm(config.d_model, config.norm_eps)
+            self.moe = MoE(
+                config.d_model,
+                config.n_experts,
+                config.top_k,
+                config.expert_hidden,
+                dropout=config.dropout,
+                aux_loss_coef=config.aux_loss_coef,
+                router_z_loss_coef=config.router_z_loss_coef,
+                router_jitter=config.router_jitter,
+            )
+            self.integrate_moe = ResidualIntegration(
+                config.d_model, config.layer_scale_init, config.dropout
+            )
+
+        self.track_memory_losses = self.use_memory and (
             config.memory_loss_coef > 0.0 or config.consistency_loss_coef > 0.0
         )
         self.gradient_checkpointing = False
@@ -58,7 +63,11 @@ class AuroraBlock(nn.Module):
     def init_state(self, batch_size: int, device: torch.device) -> BlockState:
         return BlockState(
             core=self.core.init_state(batch_size, device),
-            memory=self.memory.init_state(batch_size, device),
+            memory=(
+                self.memory.init_state(batch_size, device)
+                if self.use_memory
+                else torch.zeros(0, device=device)
+            ),
         )
 
     def forward(
@@ -78,33 +87,41 @@ class AuroraBlock(nn.Module):
             core_output, core_state = self.core(core_input, state.core)
         x = self.integrate_core(x, core_output)
 
-        memory_input = self.norm_memory(x)
-        track_memory_losses = self.track_memory_losses
+        if self.use_memory:
+            memory_input = self.norm_memory(x)
+            track_memory_losses = self.track_memory_losses
 
-        def memory_branch(
-            hidden: torch.Tensor, memory_state: torch.Tensor
-        ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-            output, next_state, losses = self.memory.forward_with_losses(
-                hidden, memory_state, track_losses=track_memory_losses
-            )
-            return output, next_state, losses.prediction, losses.consistency
+            def memory_branch(
+                hidden: torch.Tensor, memory_state: torch.Tensor
+            ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+                output, next_state, losses = self.memory.forward_with_losses(
+                    hidden, memory_state, track_losses=track_memory_losses
+                )
+                return output, next_state, losses.prediction, losses.consistency
 
-        if use_checkpoint:
-            memory_output, memory_state, prediction_loss, consistency_loss = checkpoint(
-                memory_branch, memory_input, state.memory, use_reentrant=False
-            )
+            if use_checkpoint:
+                memory_output, memory_state, prediction_loss, consistency_loss = checkpoint(
+                    memory_branch, memory_input, state.memory, use_reentrant=False
+                )
+            else:
+                memory_output, memory_state, prediction_loss, consistency_loss = memory_branch(
+                    memory_input, state.memory
+                )
+            x = self.integrate_memory(x, memory_output)
         else:
-            memory_output, memory_state, prediction_loss, consistency_loss = memory_branch(
-                memory_input, state.memory
-            )
-        x = self.integrate_memory(x, memory_output)
+            memory_state = state.memory
+            prediction_loss = torch.zeros((), device=x.device, dtype=torch.float32)
+            consistency_loss = torch.zeros((), device=x.device, dtype=torch.float32)
 
-        moe_input = self.norm_moe(x)
-        if use_checkpoint:
-            moe_output, aux_loss = checkpoint(self.moe, moe_input, use_reentrant=False)
+        if self.use_moe:
+            moe_input = self.norm_moe(x)
+            if use_checkpoint:
+                moe_output, aux_loss = checkpoint(self.moe, moe_input, use_reentrant=False)
+            else:
+                moe_output, aux_loss = self.moe(moe_input)
+            x = self.integrate_moe(x, moe_output)
         else:
-            moe_output, aux_loss = self.moe(moe_input)
-        x = self.integrate_moe(x, moe_output)
+            aux_loss = torch.zeros((), device=x.device, dtype=torch.float32)
 
         return (
             x,

@@ -1,5 +1,9 @@
 # AURORA-80
 
+<p align="center">
+  <img src="logo.jpg" alt="AURORA-80" width="720">
+</p>
+
 **Adaptive Unified Recurrent and Associative Neural Architecture**
 
 Исследовательский проект собственной языковой модели: без Transformer и self-attention, с многоуровневой рекуррентной динамикой, ассоциативной памятью и адаптивной маршрутизацией экспертов.
@@ -217,6 +221,29 @@ python -m aurora.benchmarks.evaluate \
 ```
 
 Отчёт содержит loss и perplexity по каждому домену, число токенов, шаг чекпоинта, архитектуру и SHA-256 из `manifest.json`, если он есть рядом с `.bin`.
+
+### 6. Проверка длинного контекста
+
+```bash
+python -m aurora.benchmarks.state_stability \
+  --checkpoint runs/smoke/best.pt \
+  --lengths 4096 8192 16384 32768 \
+  --chunk-size 256 \
+  --output reports/state_stability.json
+```
+
+Последовательность обрабатывается чанками с продолжением состояния, для каждой длины считается loss/perplexity, скорость, финитность, норма и максимальное абсолютное значение состояния, рост нормы и loss первого/последнего чанка. `--reset-interval N` сбрасывает состояние каждые N токенов, что позволяет сравнить единое состояние с документными границами. Для воспроизводимости можно передать `--data tokens.bin`; без него токены детерминированно генерируются по seed. Замер на smoke-модели проверяет численную устойчивость, но не качество длинного контекста обученной модели.
+
+### 7. Абляция компонентов
+
+```bash
+python -m aurora.benchmarks.ablation \
+  --config configs/smoke.yaml \
+  --variants core core_memory full \
+  --output reports/smoke_ablation.json
+```
+
+Варианты обучаются с нуля на одних данных, seed и token budget: `core` без памяти и MoE, `core_memory` с памятью, `full` с памятью и MoE. Отчёт содержит параметры (total/active), loss/perplexity, скорость, run id и чекпоинты, а также `loss_delta_vs_core` и `perplexity_ratio_vs_core`. Отключённые компоненты полностью удаляют свои параметры, состояние и лоссы. Smoke-прогон проверяет механику абляции; выводы о вкладе компонентов требуют обученного 100M-чекпоинта и нескольких seed.
 
 ---
 
@@ -444,13 +471,16 @@ Eval-отчёт (`reports/smoke_eval.json`) теперь включает `run_m
 - Ternary-квантование, упаковка 2-bit, QAT через straight-through estimator и версионированный AURORA-TQ архив.
 - Offline-калибровка групповых масштабов по минимальной ошибке реконструкции (`--calibrate`).
 - Сравнение FP32/FP16/ternary/INT8/INT4 на одном чекпоинте и датасете (`aurora-quant-bench`).
+- Проверка стабильности состояния на 4k–32k с опциональным reset (`aurora-state-check`).
+- Абляция `core`/`core_memory`/`full` с равным token budget (`aurora-ablate`).
 - Загрузка чекпоинтов для инференса с автоматическим включением ternary-режима.
 - Генерация с temperature, top-k, top-p и repetition penalty; батчевый и streaming-режимы.
 - HTTP API для генерации (`aurora-serve`) и защита от слишком больших запросов.
 - Gradient checkpointing, early stopping и остановка по token budget.
 - Автоматический BF16/FP16 autocast на CUDA при генерации и оценке perplexity.
+- CUDA AMP (BF16, FP16+GradScaler) и `torch.compile` (`aot_eager`, `inductor`) проверены на 100M; CUDA-замеры — в `docs/benchmarks.md`.
 - CI (lint, mypy, tests, end-to-end smoke на чистом runner), `Makefile`, benchmark throughput/RAM/latency.
-- 134 теста: причинность, состояния, память, маршрутизация, квантование, сравнение квантизации, обучение, resume, провенанс, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, курирование корпуса, baseline и инференс.
+- 142 теста: причинность, состояния, память, маршрутизация, квантование, сравнение квантизации, длинный контекст, абляция компонентов, обучение, resume, провенанс, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, курирование корпуса, baseline и инференс.
 
 ---
 
@@ -497,6 +527,8 @@ AURORA-80/
 │   ├── benchmarks/
 │   │   ├── perplexity.py
 │   │   ├── quantization.py
+│   │   ├── state_stability.py
+│   │   ├── ablation.py
 │   │   └── evaluate.py
 │   ├── config.py
 │   ├── generation.py
@@ -538,9 +570,10 @@ mypy aurora
 ## Ограничения прототипа
 
 - Рекуррентное ядро и память обрабатывают токены последовательно. Это упрощает верификацию, но ограничивает скорость обучения. Следующий шаг — chunkwise parallel scan и оптимизированные ядра.
-- `L_memory` и `L_consistency` реализованы, но их коэффициенты не подобраны, ablation не проведён.
+- `L_memory` и `L_consistency` реализованы, но их коэффициенты не подобраны. Smoke-абляция `core`/`core_memory`/`full` есть, вклад компонентов на обученном 100M ещё не измерен.
+- Состояние не сбрасывается на границах документов внутри упакованных train-последовательностей: датасет отдаёт плоские окна токенов (ADR 0004). Reset доступен в `aurora-state-check` для замеров; document-aware обучение — в M2.
 - Transformer baseline реализован, но честное сравнение на реальном корпусе при равных данных и compute ещё не проводилось.
-- Все замеры throughput/latency/памяти сделаны на CPU. CUDA AMP и `torch.compile` в этом окружении не проверены.
+- CUDA AMP и `torch.compile` проверены на RTX 3050: eager CUDA медленнее CPU из-за последовательного ядра, `inductor` ускоряет batched inference, но MoE упирается в recompile limit, поэтому compiled training/generation медленнее eager. CUDA graphs не проверены. Основной `.venv` остаётся CPU-only; CUDA-замеры выполнены в отдельном `.venv-cuda`.
 - 80B-конфигурация не обучалась и не запускалась. Это расчётная конфигурация.
 - Экспертная система распределена по слоям; стратегия разделяемых экспертов для 80B требует отдельных экспериментов.
 - Курирование корпуса реализовано (`aurora-curate`), но на реальном корпусе ещё не прогонялось; точный и near-dedup индексы хранятся в RAM и не рассчитаны на миллиарды документов без шардирования. Data mixture поддерживается через `train_paths`/`train_weights`, подготовка данных потоковая.

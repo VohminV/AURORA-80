@@ -22,7 +22,7 @@
 - [x] Git-репозиторий, SSH remote, первый коммит отправлен в `origin/main`.
 - [x] Конфиги `smoke`, `100m`, `100m_qat`, `transformer_100m`, `1b`, `80b`.
 - [x] Расчёт параметров: 100M — 105.73M total / 49.10M active; 1B — 929.49M / 325.51M; 80B — 80.49B / 11.52B; Transformer-100M baseline — 106.28M.
-- [x] 134 теста; `ruff`, `mypy` проходят.
+- [x] 142 теста; `ruff`, `mypy` проходят.
 - [x] Smoke-обучение, resume, генерация, perplexity, QAT-обучение и QAT-inference.
 - [x] Демонстрационный корпус и скрипт подсчёта параметров.
 - [x] CI, `Makefile`, потоковая подготовка данных с manifest.
@@ -31,6 +31,9 @@
 - [x] Потоковое курирование корпуса: exact/near dedup, фильтры качества, PII drop/redact и JSON-отчёт.
 - [x] Offline-калибровка групповых ternary-масштабов (`--calibrate`).
 - [x] Сравнение FP32/FP16/ternary/INT8/INT4 на одном чекпоинте и датасете (`aurora-quant-bench`).
+- [x] Проверка стабильности состояния на 4k/8k/16k/32k с опциональным reset (`aurora-state-check`; smoke/CPU).
+- [x] Абляция `core`/`core_memory`/`full` с равным token budget (`aurora-ablate`; smoke/CPU).
+- [x] CUDA AMP (BF16, FP16+GradScaler), gradient checkpointing и `torch.compile` (`aot_eager`, `inductor`) на RTX 3050; замеры 100M (CUDA медленнее CPU; MoE recompiles остаются).
 
 ### 0.2 Чего принципиально ещё нет
 
@@ -59,7 +62,7 @@
 - [x] `P0` Проверка `manifest.dataset_version`, размеров и SHA-256 для train/val/mixture при запуске и resume.
 - [x] `P1` Опциональный TensorBoard.
 - [x] `P1` Опциональный `torch.compile` (код есть).
-- [x] `P0` Проверить `torch.compile` на 100M конфигурации (`aot_eager`; `inductor` заблокирован отсутствием `Python.h` в окружении).
+- [x] `P0` Проверить `torch.compile` на 100M конфигурации (`aot_eager` и `inductor` на CUDA; для `inductor` понадобились локальные заголовки Python 3.12; MoE recompiles остаются).
 - [x] `P0` CI: lint, mypy, tests и end-to-end smoke на каждый push.
 - [ ] `P1` Docker-образ для обучения и inference.
 - [x] `P1` Makefile/Taskfile с типовыми командами.
@@ -76,9 +79,9 @@
 - [x] `P0` Причинность и продолжение состояния проверены тестами.
 - [x] `P1` `norm_eps` прокинут во внутренние нормы.
 - [x] `P1` Реализовать `L_memory` и `L_consistency`.
-- [ ] `P1` Провести ablation: вклад core/memory/MoE по отдельности.
-- [ ] `P1` Проверить стабильность состояния на длинах 4k/8k/16k/32k.
-- [ ] `P1` Решить, нужны ли начальное состояние и state reset между документами.
+- [x] `P1` Провести ablation: вклад core/memory/MoE по отдельности (smoke/CPU; содержательный вывод — на 100M в M2).
+- [x] `P1` Проверить стабильность состояния на длинах 4k/8k/16k/32k (smoke-модель, CPU; 100M — после M1).
+- [x] `P1` Решить, нужны ли начальное состояние и state reset между документами (ADR 0004: нулевое начальное состояние; reset на границах документов — в M2).
 - [ ] `P2` Варианты памяти: linear attention, delta-net, Titans-like.
 - [ ] `P2` Shared experts и expert choice routing.
 
@@ -90,9 +93,9 @@
 - [x] `P0` Gradient accumulation, clipping, пропуск non-finite шагов.
 - [x] `P0` Validation loss/perplexity и best/latest checkpoints.
 - [x] `P0` Smoke-обучение подтверждает снижение loss.
-- [ ] `P0` Проверить AMP на реальной CUDA (в venv сейчас CPU-only torch).
-- [x] `P0` Замерить throughput и peak memory для 100M (CPU; CUDA-замер ещё нужен).
-- [x] `P1` Gradient checkpointing для длинных последовательностей (CPU-тесты; CUDA-замер памяти не сделан).
+- [x] `P0` Проверить AMP на реальной CUDA (RTX 3050; BF16 и FP16+GradScaler; smoke train/resume).
+- [x] `P0` Замерить throughput и peak memory для 100M (CPU и CUDA: 22 tok/s, 2.7 GB allocated, 3.2 GB reserved на CUDA).
+- [x] `P1` Gradient checkpointing для длинных последовательностей (CPU-тесты; CUDA: −24% VRAM, −41% throughput).
 - [ ] `P1` Подобрать learning rate, betas, warmup, weight decay на 100M.
 - [x] `P1` Early stopping и остановка по compute budget (`max_tokens`).
 - [ ] `P1` Эксперимент-трекер: W&B или MLflow.
@@ -136,7 +139,7 @@
 - [x] `P0` Temperature, top-k, top-p, repetition penalty.
 - [x] `P0` Centralized checkpoint loading и autocast.
 - [x] `P0` Perplexity evaluation.
-- [x] `P0` Замерить latency/tokens/s/RAM для 100M (CPU; CUDA-замер ещё нужен).
+- [x] `P0` Замерить latency/tokens/s/RAM для 100M (CPU и CUDA; CUDA eager медленнее из-за последовательного ядра).
 - [x] `P0` Реализовать батчевый и streaming inference (`generate_batch`, `stream_generate`).
 - [x] `P1` HTTP API/server (`aurora-serve`; single-prompt, localhost by default).
 - [ ] `P1` Memory-mapped загрузка экспертов.
@@ -145,7 +148,7 @@
 
 ### 1.7 Качество и документация
 
-- [x] `P0` 134 теста на архитектуру, память, роутер, QAT, обучение, данные, курирование, чекпоинты, провенанс, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, сравнение квантизации и inference.
+- [x] `P0` 142 теста на архитектуру, память, роутер, QAT, обучение, данные, курирование, чекпоинты, провенанс, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, сравнение квантизации, длинный контекст, абляцию компонентов и inference.
 - [x] `P0` `ruff`, `mypy`, инструкции запуска.
 - [x] `P0` README с ограничениями и научной базой.
 - [x] `P0` Зафиксировать baseline-метрики smoke-модели.
@@ -159,7 +162,7 @@
 - [x] Checkpoint можно сохранить, загрузить и использовать.
 - [x] QAT-модель можно обучить и запустить.
 - [x] CI зелёный на чистой машине (lint, mypy, pytest и end-to-end smoke с resume и проверкой провенанса).
-- [x] Замерены throughput, память и latency прототипа (CPU).
+- [x] Замерены throughput, память и latency прототипа (CPU и CUDA).
 
 ---
 
@@ -402,12 +405,12 @@
 ### 8.2 Производительность
 
 - [x] `P0` Профилирование core/memory/MoE по отдельности (CPU).
-- [x] `P0` Замер tokens/s и peak memory (CPU).
+- [x] `P0` Замер tokens/s и peak memory (CPU и CUDA).
 - [ ] `P0` Устранение лишних GPU-синхронизаций.
 - [ ] `P1` Fused kernels для recurrent core.
 - [ ] `P1` Chunkwise parallel scan.
-- [ ] `P1` `torch.compile` и CUDA graphs, где применимо.
-- [ ] `P1` Убрать рекомпиляции MoE при `torch.compile` и прогнать `inductor` на CUDA.
+- [ ] `P1` CUDA graphs и `torch.compile` без рекомпиляций (`inductor` проверен; CUDA graphs — нет).
+- [ ] `P1` Убрать рекомпиляции MoE при `torch.compile` (`inductor` на CUDA прогнан; достигается recompile limit).
 
 ### 8.3 Надёжность
 
@@ -447,9 +450,9 @@
 5. [ ] Запустить 100M на 1–2B токенов.
 6. [x] Реализовать Transformer baseline того же размера.
 7. [x] Добавить единый eval harness и отчёт (нужен прогон на 100M).
-8. [x] Замерить throughput/VRAM/latency (CPU; VRAM недоступна).
-9. [ ] Проверить AMP и `torch.compile` на CUDA.
-10. [x] Реализовать `L_memory` и `L_consistency` (ablation ещё нужен).
+8. [x] Замерить throughput/VRAM/latency (CPU и CUDA; 100M ~2.7 GB VRAM).
+9. [x] Проверить AMP и `torch.compile` на CUDA (BF16, FP16+GradScaler, `aot_eager`, `inductor`; MoE recompiles остаются).
+10. [x] Реализовать `L_memory` и `L_consistency` (smoke-абляция есть; вклад на 100M ещё нужен).
 11. [x] Добавить CI.
 12. [x] Реализовать потоковое курирование корпуса: dedup, quality filters, PII.
 13. [ ] Написать data card и model card для 100M.

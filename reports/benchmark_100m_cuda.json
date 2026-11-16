@@ -1,0 +1,63 @@
+{
+  "label": "aurora_100m_cuda_amp",
+  "created_utc": "2026-11-16T02:09:14.608888+00:00",
+  "config": "configs/aurora_100m.yaml",
+  "hardware": {
+    "platform": "Linux-7.0.0-43-generic-x86_64-with-glibc2.39",
+    "processor": "x86_64",
+    "cpu_count": 8,
+    "torch_threads": 4,
+    "python": "3.12.3",
+    "torch": "2.14.1+cu130",
+    "device": "cuda",
+    "gpu": {
+      "name": "NVIDIA GeForce RTX 3050",
+      "total_memory_mb": 7885.25,
+      "capability": "8.6"
+    }
+  },
+  "parameters": {
+    "total": 105727560,
+    "active": 49104456
+  },
+  "settings": {
+    "seq_len": 64,
+    "batch_size": 1,
+    "train_steps": 5,
+    "inference_steps": 5,
+    "generation_tokens": 8,
+    "compile": false,
+    "compile_backend": null,
+    "dtype_amp": "auto"
+  },
+  "train": {
+    "steps": 5,
+    "tokens": 320,
+    "seconds": 15.52392419500029,
+    "tokens_per_second": 20.613344665974388,
+    "seconds_per_step": 3.1047848390000583,
+    "peak_rss_mb": 2448.59375,
+    "peak_allocated_mb": 2032.88720703125,
+    "peak_reserved_mb": 2246.0
+  },
+  "inference": {
+    "steps": 5,
+    "tokens": 320,
+    "seconds": 4.237236133999431,
+    "tokens_per_second": 75.52092682121996,
+    "milliseconds_per_token": 13.241362918748223,
+    "peak_rss_mb": 2448.59375,
+    "peak_allocated_mb": 1030.35546875,
+    "peak_reserved_mb": 2246.0
+  },
+  "generation": {
+    "new_tokens": 8,
+    "prompt_tokens": 32,
+    "seconds": 0.7119995529992593,
+    "tokens_per_second": 11.235962110229474,
+    "milliseconds_per_token": 88.99994412490742,
+    "peak_rss_mb": 2466.84375,
+    "peak_allocated_mb": 1030.205078125,
+    "peak_reserved_mb": 2246.0
+  }
+}

@@ -281,3 +281,44 @@ also receive `perplexity_delta` and `perplexity_ratio` relative to it. A variant
 is reported as skipped when no layer meets `min_features`/skip rules. QAT
 checkpoints are rejected because their `TernaryLinear` path would re-quantize
 weights during the forward pass.
+
+## State stability report (`state_stability.json`)
+
+`aurora.benchmarks.state_stability` writes:
+
+| Key | Meaning |
+| --- | --- |
+| `created_utc` | Report timestamp |
+| `config`, `checkpoint` | Config path and optional checkpoint path |
+| `architecture`, `device` | Model architecture and execution device |
+| `evaluation` | Git state and environment |
+| `settings` | Lengths, chunk size, reset interval, seed and optional data path |
+| `peak_rss_mb` | Peak process RSS |
+| `results` | One row per length |
+
+Each result contains `length`, processed `chunks`, `scored_tokens`, `seconds`,
+`tokens_per_second`, `finite`, `loss`, `perplexity`, `first_chunk_loss`,
+`last_chunk_loss`, `state_norm_first`, `state_norm_final`, `state_norm_max`,
+`state_max_abs`, `state_growth` and the effective `reset_interval`. State tensors
+are taken generically from either the AURORA block state or the Transformer KV
+cache.
+
+## Component ablation report (`ablation.json`)
+
+`aurora.benchmarks.ablation` writes:
+
+| Key | Meaning |
+| --- | --- |
+| `created_utc` | Report timestamp |
+| `architecture` | Model architecture (must be `aurora`) |
+| `evaluation` | Git state and environment |
+| `dataset` | Train/validation sources with SHA-256 and `dataset_version` |
+| `settings` | Variants, steps, sequence/batch sizes, token budget, device, seed and paths |
+| `results.<variant>` | Flags, run id, output paths, parameter counts, training and validation metrics |
+
+Variants are `core` (`use_memory=false`, `use_moe=false`), `core_memory`
+(`use_memory=true`, `use_moe=false`) and `full` (both enabled). Every variant is
+trained from scratch with the same seed, data and token budget. When `core` is
+present, the other variants also receive `loss_delta_vs_core` and
+`perplexity_ratio_vs_core`. Disabled branches remove their parameters, state and
+losses rather than masking them at runtime.

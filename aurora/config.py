@@ -31,11 +31,13 @@ class ModelConfig:
     n_levels: int = 4
     d_state: int = 128
 
+    use_memory: bool = True
     memory_heads: int = 4
     memory_decay_init: float = 0.9
     memory_write_init: float = 0.5
     memory_epsilon: float = 1e-6
 
+    use_moe: bool = True
     n_experts: int = 8
     top_k: int = 2
     expert_hidden: int = 1024

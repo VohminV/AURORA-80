@@ -44,6 +44,8 @@ def scale_residual_outputs(model: nn.Module, n_layers: int) -> None:
     for block in getattr(model, "blocks", []):
         with torch.no_grad():
             block.core.out_proj.weight.mul_(scale)
-            block.memory.out_proj.weight.mul_(scale)
-            for expert in block.moe.experts:
-                expert.down_proj.weight.mul_(scale)
+            if getattr(block, "use_memory", False):
+                block.memory.out_proj.weight.mul_(scale)
+            if getattr(block, "use_moe", False):
+                for expert in block.moe.experts:
+                    expert.down_proj.weight.mul_(scale)

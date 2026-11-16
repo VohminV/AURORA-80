@@ -23,6 +23,7 @@ MANIFEST
 
 # Virtual environments
 .venv/
+.venv-*/
 venv/
 env/
 ENV/
@@ -52,6 +53,8 @@ logs/
 # Generated smoke artifacts
 /reports/smoke_eval.json
 /reports/smoke_quantization.json
+/reports/state_stability.json
+/reports/smoke_ablation.json
 
 # Model weights and custom formats
 weights/
