@@ -22,13 +22,14 @@
 - [x] Git-репозиторий, SSH remote, первый коммит отправлен в `origin/main`.
 - [x] Конфиги `smoke`, `100m`, `100m_qat`, `transformer_100m`, `1b`, `80b`.
 - [x] Расчёт параметров: 100M — 105.73M total / 49.10M active; 1B — 929.49M / 325.51M; 80B — 80.49B / 11.52B; Transformer-100M baseline — 106.28M.
-- [x] 146 тестов; `ruff`, `mypy` проходят.
+- [x] 151 тест; `ruff`, `mypy` проходят.
 - [x] Smoke-обучение, resume, генерация, perplexity, QAT-обучение и QAT-inference.
 - [x] Демонстрационный корпус и скрипт подсчёта параметров.
 - [x] CI, `Makefile`, потоковая подготовка данных с manifest.
 - [x] Провенанс экспериментов: run metadata в checkpoint, JSONL-метрики и eval report.
 - [x] `L_memory`/`L_consistency`, throughput/RAM benchmark, Transformer baseline, eval harness.
 - [x] Потоковое курирование корпуса: exact/near dedup, фильтры качества, PII drop/redact и JSON-отчёт.
+- [x] Потоковая проверка benchmark contamination по word n-граммам (`aurora-contamination`).
 - [x] Offline-калибровка групповых ternary-масштабов (`--calibrate`).
 - [x] Сравнение FP32/FP16/ternary/INT8/INT4 на одном чекпоинте и датасете (`aurora-quant-bench`).
 - [x] Проверка стабильности состояния на 4k/8k/16k/32k с опциональным reset (`aurora-state-check`; smoke/CPU).
@@ -148,7 +149,7 @@
 
 ### 1.7 Качество и документация
 
-- [x] `P0` 146 тестов на архитектуру, память, роутер, QAT, обучение, данные, курирование, чекпоинты, провенанс, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, сравнение квантизации, длинный контекст, абляцию компонентов и inference.
+- [x] `P0` 151 тест на архитектуру, память, роутер, QAT, обучение, данные, курирование, contamination, чекпоинты, провенанс, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, сравнение квантизации, длинный контекст, абляцию компонентов и inference.
 - [x] `P0` `ruff`, `mypy`, инструкции запуска.
 - [x] `P0` README с ограничениями и научной базой.
 - [x] `P0` Зафиксировать baseline-метрики smoke-модели.
@@ -179,7 +180,7 @@
 - [ ] `P0` Отдельный test set, не использованный в обучении.
 - [ ] `P0` Обученный токенизатор 64k.
 - [ ] `P1` Анализ распределения языков и доменов.
-- [ ] `P1` Защита от benchmark contamination.
+- [x] `P1` Защита от benchmark contamination (word n-gram checker `aurora-contamination`; прогон на реальных бенчмарках — после сборки корпуса).
 
 ### 2.2 Обучение
 
@@ -459,6 +460,7 @@
 12. [x] Реализовать потоковое курирование корпуса: dedup, quality filters, PII.
 13. [ ] Написать финальные data card и model card для обученного 100M (генераторы готовы; нужны реальные данные и чекпоинт).
 14. [x] Реализовать генератор model card (`aurora-model-card`) и черновик `docs/model_card_100m.md`.
+15. [x] Реализовать n-gram проверку benchmark contamination (`aurora-contamination`).
 
 ---
 

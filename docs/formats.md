@@ -123,6 +123,39 @@ documents with a blank line and can be passed to tokenizer training or
 
 ## Tokenized dataset manifest (`manifest.json`)
 
+## Contamination report (`contamination.json`)
+
+`aurora-contamination` scans a corpus for word n-grams that also occur in
+benchmark documents:
+
+```bash
+python -m aurora.data.contamination \
+  --corpus data/curated/corpus.txt \
+  --benchmark benchmarks/mmlu.jsonl benchmarks/hellaswag.txt \
+  --ngram-size 13 --output reports/contamination.json --fail-on-match
+```
+
+| Key | Meaning |
+| --- | --- |
+| `format_version` | Report schema version (currently `1`) |
+| `created_utc` | Creation timestamp |
+| `settings` | N-gram size, input format, JSON field, chunk size, encoding and example limit |
+| `benchmarks` | Per-file documents, indexed documents, n-grams, matched documents and contamination fraction |
+| `corpus` | Per-file documents, words, n-grams, contaminated documents and matched n-grams |
+| `summary` | Aggregate benchmark/corpus counts, matched n-grams and contamination fraction |
+| `examples` | Up to `--max-examples` overlaps with corpus path/document/offset/line and benchmark document references |
+| `limitations` | Heuristic and collision caveats |
+
+Only benchmark n-gram hashes are kept in memory (64-bit polynomial hashes), so
+the corpus is streamed and memory usage scales with the benchmarks rather than
+the corpus. Text inputs are split on blank lines; JSONL inputs use
+`--json-field`. `--format` forces `text` or `jsonl` for every input. The check is
+word-based and case-folded after NFKC normalization; it does not detect
+translation, paraphrasing or tokenization-aware contamination. `--fail-on-match`
+exits with status 1 after writing the report.
+
+## Tokenized dataset manifest (`manifest.json`)
+
 `aurora.data.prepare` writes a manifest next to `train.bin` and `val.bin`:
 
 | Key | Meaning |

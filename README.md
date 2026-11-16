@@ -371,6 +371,20 @@ python -m aurora.model_card \
 
 Генератор не подтверждает лицензии данных, отсутствие contamination и safety-свойства; эти проверки должны быть задокументированы отдельно. Черновик AURORA-100M лежит в `docs/model_card_100m.md`.
 
+### Проверка benchmark contamination
+
+```bash
+python -m aurora.data.contamination \
+  --corpus data/curated/corpus.txt \
+  --benchmark benchmarks/mmlu.jsonl benchmarks/hellaswag.txt \
+  --json-field text \
+  --ngram-size 13 \
+  --output reports/contamination.json \
+  --fail-on-match
+```
+
+Инструмент нормализует Unicode, приводит текст к нижнему регистру и ищет пересечения word n-грамм корпуса с каждым benchmark-документом. В отчёте — доля benchmark-документов с пересечениями, число совпавших n-грамм, примеры с путями и номерами документов, а также ограничения метода. Память пропорциональна размеру бенчмарков, а не корпуса: корпус читается потоково. `--fail-on-match` завершает процесс кодом 1, что удобно для CI. Совпадение n-грамм — сигнал для ручного разбора, а не доказательство contamination; перевод, перефразирование и смена токенизации могут обходить проверку. Формат отчёта описан в `docs/formats.md`.
+
 ### Смешивание доменов
 
 Каждый домен готовится отдельным запуском `prepare.py`, после чего веса задаются в конфиге:
@@ -520,6 +534,7 @@ Eval-отчёт (`reports/smoke_eval.json`) теперь включает `run_m
 - Автоматическая проверка manifest для train/val/mixture-путей на запуске и при resume.
 - Генерация data card из manifest с проверкой checksums (`aurora-data-card`).
 - Генерация model card из конфига/чекпоинта, провенанса и eval-отчёта (`aurora-model-card`).
+- Потоковая проверка benchmark contamination по word n-граммам (`aurora-contamination`).
 - Memmap-датасет для токенизированных корпусов и смешивание доменов с весами.
 - Transformer baseline с RoPE и KV-cache, совместимый с trainer/inference/eval.
 - Единый eval harness с per-domain perplexity, dataset_version и git/окружением в JSON-отчёте.
@@ -535,7 +550,7 @@ Eval-отчёт (`reports/smoke_eval.json`) теперь включает `run_m
 - Автоматический BF16/FP16 autocast на CUDA при генерации и оценке perplexity.
 - CUDA AMP (BF16, FP16+GradScaler) и `torch.compile` (`aot_eager`, `inductor`) проверены на 100M; CUDA-замеры — в `docs/benchmarks.md`.
 - CI (lint, mypy, tests, end-to-end smoke на чистом runner), `Makefile`, benchmark throughput/RAM/latency.
-- 146 тестов: причинность, состояния, память, маршрутизация, квантование, сравнение квантизации, длинный контекст, абляция компонентов, обучение, resume, провенанс, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, курирование корпуса, baseline и инференс.
+- 151 тест: причинность, состояния, память, маршрутизация, квантование, сравнение квантизации, длинный контекст, абляция компонентов, обучение, resume, провенанс, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, contamination, курирование корпуса, baseline и инференс.
 
 ---
 
@@ -568,6 +583,7 @@ AURORA-80/
 │   │   ├── train_tokenizer.py
 │   │   └── stats.py
 │   ├── data/
+│   │   ├── contamination.py
 │   │   ├── curate.py
 │   │   ├── prepare.py
 │   │   ├── dataset.py
@@ -643,7 +659,7 @@ mypy aurora
 ## Документация
 
 - `docs/benchmarks.md` — замеры и команды воспроизведения.
-- `docs/formats.md` — формат чекпоинтов, manifest, model card и AURORA-TQ.
+- `docs/formats.md` — формат чекпоинтов, manifest, model card, contamination-отчёта и AURORA-TQ.
 - `docs/model_card_100m.md` — черновик model card для конфигурации AURORA-100M.
 - `docs/adr/` — architecture decision records.
 
