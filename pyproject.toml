@@ -25,6 +25,7 @@ dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.6", "mypy>=1.10"]
 aurora-train = "aurora.training.pretrain:main"
 aurora-prepare = "aurora.data.prepare:main"
 aurora-curate = "aurora.data.curate:main"
+aurora-corpus-stats = "aurora.data.corpus_stats:main"
 aurora-contamination = "aurora.data.contamination:main"
 aurora-tokenizer = "aurora.tokenizer.train_tokenizer:main"
 aurora-tokenizer-stats = "aurora.tokenizer.stats:main"

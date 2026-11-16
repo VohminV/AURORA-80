@@ -297,6 +297,17 @@ python -m aurora.data.curate \
 
 Текущая реализация хранит множество точных хэшей и SimHash-индексы в RAM. Для корпусов на миллиарды токенов понадобится sharded/on-disk дедупликация.
 
+### Статистика корпуса
+
+```bash
+python -m aurora.data.corpus_stats \
+  --input data/curated/corpus_ru.txt data/curated/corpus_en.txt data/curated/corpus_code.jsonl \
+  --domain-field source \
+  --output reports/corpus_stats.json
+```
+
+Инструмент потоково считает документы, символы, слова, строки, долю code-строк и распределение письменностей по доменам. Домен берётся из JSONL-поля `--domain-field` или из имени файла. `language_hint` (`cyrillic`/`latin`/`cjk`/`code`/`mixed`) — эвристика по письменности и доле code-строк, а не language identification; токены не считаются, потому что зависят от токенизатора (для fertility используйте `aurora-tokenizer-stats`). Отчёт описан в `docs/formats.md`.
+
 ### Токенизатор
 
 ```bash
@@ -541,6 +552,7 @@ Eval-отчёт (`reports/smoke_eval.json`) теперь включает `run_m
 - Validation loss и perplexity.
 - SentencePiece и byte-level tokenizer; `aurora-tokenizer-stats` для fertility/compression.
 - Потоковое курирование корпуса: exact/near dedup, фильтры качества, PII drop/redact, JSON-отчёт и `dataset_version`.
+- Потоковая статистика корпуса: домены, письменности, code-строки и `language_hint` (`aurora-corpus-stats`).
 - Потоковая подготовка данных с SHA-256 manifest и content-addressed `dataset_version`.
 - Автоматическая проверка manifest для train/val/mixture-путей на запуске и при resume.
 - Генерация data card из manifest с проверкой checksums (`aurora-data-card`).
@@ -561,7 +573,7 @@ Eval-отчёт (`reports/smoke_eval.json`) теперь включает `run_m
 - Автоматический BF16/FP16 autocast на CUDA при генерации и оценке perplexity.
 - CUDA AMP (BF16, FP16+GradScaler) и `torch.compile` (`aot_eager`, `inductor`) проверены на 100M; CUDA-замеры — в `docs/benchmarks.md`.
 - CI (lint, mypy, tests, end-to-end smoke на чистом runner), `Makefile`, benchmark throughput/RAM/latency.
-- 155 тестов: причинность, состояния, память, маршрутизация, квантование, сравнение квантизации, длинный контекст, абляция компонентов, обучение, resume, провенанс, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, contamination, W&B tracker, курирование корпуса, baseline и инференс.
+- 161 тест: причинность, состояния, память, маршрутизация, квантование, сравнение квантизации, длинный контекст, абляция компонентов, обучение, resume, провенанс, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, contamination, статистика корпуса, W&B tracker, курирование корпуса, baseline и инференс.
 
 ---
 
@@ -596,6 +608,7 @@ AURORA-80/
 │   │   └── stats.py
 │   ├── data/
 │   │   ├── contamination.py
+│   │   ├── corpus_stats.py
 │   │   ├── curate.py
 │   │   ├── prepare.py
 │   │   ├── dataset.py
@@ -662,7 +675,7 @@ mypy aurora
 - CUDA AMP и `torch.compile` проверены на RTX 3050: eager CUDA медленнее CPU из-за последовательного ядра, `inductor` ускоряет batched inference, но MoE упирается в recompile limit, поэтому compiled training/generation медленнее eager. CUDA graphs не проверены. Основной `.venv` остаётся CPU-only; CUDA-замеры выполнены в отдельном `.venv-cuda`.
 - 80B-конфигурация не обучалась и не запускалась. Это расчётная конфигурация.
 - Экспертная система распределена по слоям; стратегия разделяемых экспертов для 80B требует отдельных экспериментов.
-- Курирование корпуса реализовано (`aurora-curate`), но на реальном корпусе ещё не прогонялось; точный и near-dedup индексы хранятся в RAM и не рассчитаны на миллиарды документов без шардирования. Data mixture поддерживается через `train_paths`/`train_weights`, подготовка данных потоковая.
+- Курирование корпуса реализовано (`aurora-curate`), но на реальном корпусе ещё не прогонялось; точный и near-dedup индексы хранятся в RAM и не рассчитаны на миллиарды документов без шардирования. Data mixture поддерживается через `train_paths`/`train_weights`, подготовка данных потоковая. `aurora-corpus-stats` даёт эвристическое распределение языков/доменов, но не заменяет language identification и не считает токены.
 - Нет распределённого обучения и C++/CUDA runtime. AURORA-TQ v1 реализован, но быстрый ternary matmul и memory-mapped загрузка экспертов ещё не сделаны.
 - Пропускная способность RAM и предсказательная загрузка экспертов для 8 GB VRAM ещё не реализованы.
 
@@ -671,7 +684,7 @@ mypy aurora
 ## Документация
 
 - `docs/benchmarks.md` — замеры и команды воспроизведения.
-- `docs/formats.md` — формат чекпоинтов, manifest, model card, contamination-отчёта и AURORA-TQ.
+- `docs/formats.md` — формат чекпоинтов, manifest, model card, отчётов corpus stats/contamination и AURORA-TQ.
 - `docs/model_card_100m.md` — черновик model card для конфигурации AURORA-100M.
 - `docs/adr/` — architecture decision records.
 

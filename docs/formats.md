@@ -121,6 +121,28 @@ characters (after redaction when configured). The curated output separates
 documents with a blank line and can be passed to tokenizer training or
 `aurora.data.prepare`.
 
+## Corpus stats report (`corpus_stats.json`)
+
+`aurora-corpus-stats` streams a text/JSONL corpus and writes:
+
+| Key | Meaning |
+| --- | --- |
+| `format_version` | Report schema version (currently `1`) |
+| `created_utc` | Creation timestamp |
+| `settings` | Input format, JSON/domain fields, chunk size, encoding, document limit and code-line threshold |
+| `inputs` | Per-file path, resolved format and document count |
+| `domains` | Per-domain documents, characters, words, lines, code-line fraction, script counts/fractions and `language_hint` |
+| `summary` | Aggregated counters, script distribution and overall `language_hint` |
+| `limitations` | Heuristic caveats |
+
+The domain label comes from `--domain-field` for JSONL records and falls back
+to the file stem. Script ratios are computed per alphabetic Unicode character
+and are not a language identification model. `language_hint` reports
+`code`/`cyrillic`/`cjk`/`latin`/`mixed`/`unknown` using script fractions and the
+share of lines that look like source code. Token counts are intentionally absent
+because they depend on the tokenizer; use `aurora-tokenizer-stats` for
+fertility.
+
 ## Tokenized dataset manifest (`manifest.json`)
 
 ## Contamination report (`contamination.json`)
