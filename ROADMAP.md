@@ -22,7 +22,7 @@
 - [x] Git-репозиторий, SSH remote, первый коммит отправлен в `origin/main`.
 - [x] Конфиги `smoke`, `100m`, `100m_qat`, `transformer_100m`, `1b`, `80b`.
 - [x] Расчёт параметров: 100M — 105.73M total / 49.10M active; 1B — 929.49M / 325.51M; 80B — 80.49B / 11.52B; Transformer-100M baseline — 106.28M.
-- [x] 142 теста; `ruff`, `mypy` проходят.
+- [x] 146 тестов; `ruff`, `mypy` проходят.
 - [x] Smoke-обучение, resume, генерация, perplexity, QAT-обучение и QAT-inference.
 - [x] Демонстрационный корпус и скрипт подсчёта параметров.
 - [x] CI, `Makefile`, потоковая подготовка данных с manifest.
@@ -44,7 +44,7 @@
 - [ ] Chunkwise parallel scan и быстрых ядер.
 - [ ] C++/CUDA runtime и заявленных 8 GB VRAM.
 - [ ] SFT, alignment, safety-оценки.
-- [ ] Лицензии, model card, data card.
+- [ ] Финальные лицензии, model card и data card для обученного 100M (генераторы и черновики готовы).
 - [ ] Доказательства превосходства над DeepSeek или любой другой моделью.
 
 ---
@@ -148,11 +148,12 @@
 
 ### 1.7 Качество и документация
 
-- [x] `P0` 142 теста на архитектуру, память, роутер, QAT, обучение, данные, курирование, чекпоинты, провенанс, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, сравнение квантизации, длинный контекст, абляцию компонентов и inference.
+- [x] `P0` 146 тестов на архитектуру, память, роутер, QAT, обучение, данные, курирование, чекпоинты, провенанс, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, сравнение квантизации, длинный контекст, абляцию компонентов и inference.
 - [x] `P0` `ruff`, `mypy`, инструкции запуска.
 - [x] `P0` README с ограничениями и научной базой.
 - [x] `P0` Зафиксировать baseline-метрики smoke-модели.
 - [x] `P1` Architecture decision records (ADR).
+- [x] `P1` Генератор model card (`aurora-model-card`) и черновик `docs/model_card_100m.md`.
 - [ ] `P2` Схемы обучения и диаграммы.
 
 ### Gate M0
@@ -376,8 +377,8 @@
 ### 7.3 Релиз
 
 - [ ] `P0` Лицензия.
-- [ ] `P0` Model card.
-- [ ] `P0` Data card.
+- [ ] `P0` Финальная model card обученного 100M (генератор есть).
+- [ ] `P0` Финальная data card реального корпуса (генератор есть).
 - [ ] `P0` Evaluation report с методологией.
 - [ ] `P0` Воспроизводимые команды обучения/инференса.
 - [ ] `P0` Контрольные суммы весов.
@@ -434,6 +435,7 @@
 - [x] `P0` ROADMAP с этапами и чек-листами.
 - [x] `P0` Architecture decision records.
 - [x] `P0` Описание формата чекпоинтов и AURORA-TQ.
+- [x] `P1` Генератор model card и черновик карты AURORA-100M.
 - [ ] `P1` API reference.
 - [ ] `P1` Troubleshooting.
 - [ ] `P1` Гайд по воспроизведению экспериментов.
@@ -455,7 +457,8 @@
 10. [x] Реализовать `L_memory` и `L_consistency` (smoke-абляция есть; вклад на 100M ещё нужен).
 11. [x] Добавить CI.
 12. [x] Реализовать потоковое курирование корпуса: dedup, quality filters, PII.
-13. [ ] Написать data card и model card для 100M.
+13. [ ] Написать финальные data card и model card для обученного 100M (генераторы готовы; нужны реальные данные и чекпоинт).
+14. [x] Реализовать генератор model card (`aurora-model-card`) и черновик `docs/model_card_100m.md`.
 
 ---
 

@@ -317,6 +317,28 @@ python -m aurora.data.card \
 
 Карточка содержит `dataset_version`, таблицы источников и сплитов с SHA-256, настройки подготовки и токенизатора. `--verify` дополнительно пересчитывает размеры и checksums `train.bin`/`val.bin`/`test.bin`; `read_manifest` отвергает manifest с изменёнными метаданными, потому что версия не совпадает с content hash.
 
+### Model card
+
+```bash
+python -m aurora.model_card \
+  --checkpoint runs/aurora_100m/best.pt \
+  --evaluation reports/aurora_100m_eval.json \
+  --output reports/aurora_100m_MODEL_CARD.md \
+  --name "AURORA-100M" \
+  --license "TBD"
+```
+
+Карточка собирается из конфига чекпоинта, `run_metadata`, метрик и eval-отчёта: параметры total/active, архитектура, данные и их checksums, git/окружение, per-domain perplexity, ограничения и условия использования. SHA-256 самого чекпоинта включается в карточку. Если обученного чекпоинта ещё нет, можно создать черновик из конфига:
+
+```bash
+python -m aurora.model_card \
+  --config configs/aurora_100m.yaml \
+  --output docs/model_card_100m.md \
+  --name "AURORA-100M (prototype draft)"
+```
+
+Генератор не подтверждает лицензии данных, отсутствие contamination и safety-свойства; эти проверки должны быть задокументированы отдельно. Черновик AURORA-100M лежит в `docs/model_card_100m.md`.
+
 ### Смешивание доменов
 
 Каждый домен готовится отдельным запуском `prepare.py`, после чего веса задаются в конфиге:
@@ -465,6 +487,7 @@ Eval-отчёт (`reports/smoke_eval.json`) теперь включает `run_m
 - Потоковая подготовка данных с SHA-256 manifest и content-addressed `dataset_version`.
 - Автоматическая проверка manifest для train/val/mixture-путей на запуске и при resume.
 - Генерация data card из manifest с проверкой checksums (`aurora-data-card`).
+- Генерация model card из конфига/чекпоинта, провенанса и eval-отчёта (`aurora-model-card`).
 - Memmap-датасет для токенизированных корпусов и смешивание доменов с весами.
 - Transformer baseline с RoPE и KV-cache, совместимый с trainer/inference/eval.
 - Единый eval harness с per-domain perplexity, dataset_version и git/окружением в JSON-отчёте.
@@ -480,7 +503,7 @@ Eval-отчёт (`reports/smoke_eval.json`) теперь включает `run_m
 - Автоматический BF16/FP16 autocast на CUDA при генерации и оценке perplexity.
 - CUDA AMP (BF16, FP16+GradScaler) и `torch.compile` (`aot_eager`, `inductor`) проверены на 100M; CUDA-замеры — в `docs/benchmarks.md`.
 - CI (lint, mypy, tests, end-to-end smoke на чистом runner), `Makefile`, benchmark throughput/RAM/latency.
-- 142 теста: причинность, состояния, память, маршрутизация, квантование, сравнение квантизации, длинный контекст, абляция компонентов, обучение, resume, провенанс, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, курирование корпуса, baseline и инференс.
+- 146 тестов: причинность, состояния, память, маршрутизация, квантование, сравнение квантизации, длинный контекст, абляция компонентов, обучение, resume, провенанс, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, курирование корпуса, baseline и инференс.
 
 ---
 
@@ -533,6 +556,7 @@ AURORA-80/
 │   ├── config.py
 │   ├── generation.py
 │   ├── inference.py
+│   ├── model_card.py
 │   ├── provenance.py
 │   ├── server.py
 │   └── utils.py
@@ -540,6 +564,7 @@ AURORA-80/
 ├── docs/
 │   ├── benchmarks.md
 │   ├── formats.md
+│   ├── model_card_100m.md
 │   └── adr/
 ├── scripts/
 │   ├── benchmark.py
@@ -585,7 +610,8 @@ mypy aurora
 ## Документация
 
 - `docs/benchmarks.md` — замеры и команды воспроизведения.
-- `docs/formats.md` — формат чекпоинтов, manifest и AURORA-TQ.
+- `docs/formats.md` — формат чекпоинтов, manifest, model card и AURORA-TQ.
+- `docs/model_card_100m.md` — черновик model card для конфигурации AURORA-100M.
 - `docs/adr/` — architecture decision records.
 
 ---

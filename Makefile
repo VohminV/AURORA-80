@@ -5,7 +5,7 @@ CONFIG ?= configs/aurora_100m.yaml
 
 .PHONY: install install-dev test lint format format-check check smoke-data smoke-train \
 	smoke-generate smoke-perplexity eval quant-compare state-check ablate profile benchmark \
-	benchmark-cuda clean
+	benchmark-cuda data-card model-card clean
 
 install:
 	$(PIP) install -e ".[tokenizer]"
@@ -109,6 +109,25 @@ benchmark-cuda:
 		--inference-steps 3 \
 		--generation-tokens 4 \
 		--output reports/benchmark_cuda.json
+
+data-card:
+	mkdir -p reports
+	$(PYTHON) -m aurora.data.card \
+		--manifest data/smoke/manifest.json \
+		--output reports/data_card_smoke.md \
+		--name "AURORA smoke" \
+		--language ru --language en \
+		--license "Not determined" \
+		--verify
+
+model-card:
+	mkdir -p reports
+	$(PYTHON) -m aurora.model_card \
+		--checkpoint runs/smoke/best.pt \
+		--evaluation reports/smoke_eval.json \
+		--name "AURORA smoke" \
+		--license "Not determined" \
+		--output reports/model_card_smoke.md
 
 clean:
 	rm -rf runs .pytest_cache .mypy_cache .ruff_cache

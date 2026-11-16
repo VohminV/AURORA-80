@@ -36,6 +36,7 @@ aurora-evaluate = "aurora.benchmarks.evaluate:main"
 aurora-serve = "aurora.server:main"
 aurora-tq = "aurora.quantization.tq:main"
 aurora-data-card = "aurora.data.card:main"
+aurora-model-card = "aurora.model_card:main"
 
 [tool.setuptools.packages.find]
 include = ["aurora*"]

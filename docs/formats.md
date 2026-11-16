@@ -155,6 +155,39 @@ python -m aurora.data.card --manifest data/processed/manifest.json \
 and assigns whole documents to one split. `split_mode="token"` keeps the original
 byte-offset split and may cut inside a document.
 
+## Model card (`MODEL_CARD.md`)
+
+`aurora-model-card` renders a Markdown model card from a checkpoint or a config:
+
+```bash
+python -m aurora.model_card --checkpoint runs/aurora_100m/best.pt \
+  --evaluation reports/aurora_100m_eval.json \
+  --name "AURORA-100M" --license "TBD" \
+  --output reports/aurora_100m_MODEL_CARD.md
+
+python -m aurora.model_card --config configs/aurora_100m.yaml \
+  --name "AURORA-100M (prototype draft)" \
+  --output docs/model_card_100m.md
+```
+
+With `--checkpoint`, the card reads `format_version`, model config, step,
+`qat_active`, `best_val`, metrics and `run_metadata` from the checkpoint, and
+includes the checkpoint SHA-256. The checkpoint is read with
+`torch.load(..., weights_only=True)` and is not instantiated as a model, so
+generating a card does not require matching hardware. Parameter counts (total and
+active) are computed from the config on the `meta` device.
+
+With `--evaluation`, the card adds the report's per-split tokens, loss,
+perplexity, `dataset_version`, git commit and evaluation settings. Without a
+checkpoint the card is explicitly marked `Configuration only (no trained
+checkpoint)`; without an evaluation report it states that no quality claim can
+be made. `--config` and `--checkpoint` are mutually exclusive. Additional
+`--limitation` entries are appended to the standard limitations list.
+
+The generator records provenance and configured data paths, but does not verify
+data licenses, deduplication quality, contamination or safety properties. Those
+checks must be documented separately before a release.
+
 ### Dataset provenance checks
 
 Training and evaluation link every `.bin` file to its manifest:
