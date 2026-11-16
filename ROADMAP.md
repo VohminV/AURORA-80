@@ -64,7 +64,7 @@
 - [x] `P1` Опциональный `torch.compile` (код есть).
 - [x] `P0` Проверить `torch.compile` на 100M конфигурации (`aot_eager` и `inductor` на CUDA; для `inductor` понадобились локальные заголовки Python 3.12; MoE recompiles остаются).
 - [x] `P0` CI: lint, mypy, tests и end-to-end smoke на каждый push.
-- [ ] `P1` Docker-образ для обучения и inference.
+- [x] `P1` Docker-образ для обучения и inference (CPU по умолчанию, CUDA через build arg; сборка проверяется в CI).
 - [x] `P1` Makefile/Taskfile с типовыми командами.
 - [ ] `P2` Публикация пакета/версионирование.
 

@@ -1,11 +1,13 @@
 PYTHON ?= python
 CUDA_PYTHON ?= .venv-cuda/bin/python
 PIP ?= $(PYTHON) -m pip
+DOCKER ?= docker
+IMAGE ?= aurora-80:cpu
 CONFIG ?= configs/aurora_100m.yaml
 
 .PHONY: install install-dev test lint format format-check check smoke-data smoke-train \
 	smoke-generate smoke-perplexity eval quant-compare state-check ablate profile benchmark \
-	benchmark-cuda data-card model-card clean
+	benchmark-cuda data-card model-card docker-build clean
 
 install:
 	$(PIP) install -e ".[tokenizer]"
@@ -128,6 +130,9 @@ model-card:
 		--name "AURORA smoke" \
 		--license "Not determined" \
 		--output reports/model_card_smoke.md
+
+docker-build:
+	$(DOCKER) build -t $(IMAGE) .
 
 clean:
 	rm -rf runs .pytest_cache .mypy_cache .ruff_cache

@@ -138,6 +138,38 @@ pip install torch --index-url https://download.pytorch.org/whl/cu128
 python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
 ```
 
+### Docker
+
+CPU-образ собирается из `python:3.12-slim`; по умолчанию entrypoint — `aurora-train`:
+
+```bash
+make docker-build
+docker run --rm -v "$PWD/data:/workspace/data" -v "$PWD/runs:/workspace/runs" \
+  aurora-80:cpu --config configs/aurora_100m.yaml
+```
+
+Inference запускается через переопределение entrypoint:
+
+```bash
+docker run --rm -v "$PWD/runs:/workspace/runs" \
+  --entrypoint aurora-generate aurora-80:cpu \
+  --checkpoint runs/smoke/best.pt \
+  --prompt "AURORA" --max-new-tokens 16
+```
+
+Для CUDA-сборки передайте индекс PyTorch с CUDA-колёсами и запускайте с `--gpus all`:
+
+```bash
+docker build \
+  --build-arg TORCH_INDEX_URL=https://download.pytorch.org/whl/cu128 \
+  -t aurora-80:cu128 .
+docker run --rm --gpus all -v "$PWD/data:/workspace/data" \
+  -v "$PWD/runs:/workspace/runs" aurora-80:cu128 \
+  --config configs/aurora_100m.yaml --device cuda
+```
+
+Контейнер работает от непривилегированного пользователя `aurora` (UID 10001); каталоги `data`, `runs` и `reports` должны быть доступны ему на запись. Данные и чекпоинты не входят в образ — монтируйте их через `-v`.
+
 ---
 
 ## Быстрый старт
@@ -572,6 +604,7 @@ AURORA-80/
 │   └── profile_components.py
 ├── tests/
 ├── .github/workflows/ci.yml
+├── Dockerfile
 ├── Makefile
 ├── pyproject.toml
 └── README.md
