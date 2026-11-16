@@ -374,6 +374,37 @@ The harness expects preprocessed multiple-choice files; it does not download
 MMLU/HellaSwag/ARC/WinoGrande or assemble few-shot prompts. Choices are scored in
 separate forward passes, so evaluation is sequential rather than batched.
 
+## Results summary (`results.md`, `results.json`)
+
+`aurora-report` combines any number of eval and zero-shot reports:
+
+```bash
+python -m aurora.report \
+  --report seed0=reports/eval_seed0.json \
+  --report seed1=reports/eval_seed1.json \
+  --output reports/results.md --json reports/results.json
+```
+
+| Key | Meaning |
+| --- | --- |
+| `format_version` | Summary schema version (currently `1`) |
+| `created_utc` | Creation timestamp |
+| `reports` | Per-input name, path, detected kind, values and run metadata |
+| `reports[].run_id` | Run id from `run_metadata` |
+| `reports[].git_commit`, `git_branch`, `git_dirty` | Git state, preferring the checkpoint run metadata and falling back to the report's evaluation block |
+| `reports[].checkpoint_step` | Step stored in the evaluated checkpoint |
+| `reports[].dataset_versions` | Dataset versions from the report or checkpoint |
+| `metrics` | One entry per task/metric with `count`, `mean`, `std`, `min`, `max` and raw `values` |
+| `metrics[].higher_is_better` | `false` for perplexity, `true` for accuracy |
+| `limitations` | Statistical and comparability caveats |
+
+Input kind is detected from the report shape: `results.<domain>.perplexity` is
+an eval report and `tasks.<task>.accuracy` is a zero-shot report. Each report is
+treated as one independent run. `std` is the sample standard deviation
+(`ddof=1`) and is `0` for a single report. The Markdown output contains the
+summary table, one row per input run with run id/git/step/dataset versions, and
+the limitations.
+
 ## Quantization comparison report (`quantization.json`)
 
 `aurora.benchmarks.quantization` writes one report for all weight-only variants:

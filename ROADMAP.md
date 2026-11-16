@@ -22,7 +22,7 @@
 - [x] Git-репозиторий, SSH remote, первый коммит отправлен в `origin/main`.
 - [x] Конфиги `smoke`, `100m`, `100m_qat`, `transformer_100m`, `1b`, `80b`.
 - [x] Расчёт параметров: 100M — 105.73M total / 49.10M active; 1B — 929.49M / 325.51M; 80B — 80.49B / 11.52B; Transformer-100M baseline — 106.28M.
-- [x] 168 тестов; `ruff`, `mypy` проходят.
+- [x] 175 тестов; `ruff`, `mypy` проходят.
 - [x] Smoke-обучение, resume, генерация, perplexity, QAT-обучение и QAT-inference.
 - [x] Демонстрационный корпус и скрипт подсчёта параметров.
 - [x] CI, `Makefile`, потоковая подготовка данных с manifest.
@@ -32,6 +32,7 @@
 - [x] Потоковая проверка benchmark contamination по word n-граммам (`aurora-contamination`).
 - [x] Потоковая статистика корпуса: домены, письменности, code-строки и `language_hint` (`aurora-corpus-stats`).
 - [x] Zero-shot multiple-choice harness с log-prob скорингом (`aurora-zero-shot`; прогон на реальных бенчмарках — после 100M).
+- [x] Агрегация eval/zero-shot отчётов с mean/std по запускам (`aurora-report`).
 - [x] Опциональный W&B-трекер (online/offline) с graceful fallback.
 - [x] Offline-калибровка групповых ternary-масштабов (`--calibrate`).
 - [x] Сравнение FP32/FP16/ternary/INT8/INT4 на одном чекпоинте и датасете (`aurora-quant-bench`).
@@ -152,7 +153,7 @@
 
 ### 1.7 Качество и документация
 
-- [x] `P0` 168 тестов на архитектуру, память, роутер, QAT, обучение, данные, курирование, статистику корпуса, contamination, чекпоинты, провенанс, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, zero-shot оценку, W&B tracker, сравнение квантизации, длинный контекст, абляцию компонентов и inference.
+- [x] `P0` 175 тестов на архитектуру, память, роутер, QAT, обучение, данные, курирование, статистику корпуса, contamination, чекпоинты, провенанс, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, zero-shot оценку, агрегацию результатов, W&B tracker, сравнение квантизации, длинный контекст, абляцию компонентов и inference.
 - [x] `P0` `ruff`, `mypy`, инструкции запуска.
 - [x] `P0` README с ограничениями и научной базой.
 - [x] `P0` Зафиксировать baseline-метрики smoke-модели.
@@ -204,7 +205,7 @@
 - [ ] `P0` Zero-shot: MMLU, HellaSwag, ARC, WinoGrande (harness `aurora-zero-shot` готов; нужны данные и обученный чекпоинт).
 - [ ] `P0` RU-бенчмарки: ruMMLU, Russian SuperGLUE и аналоги.
 - [ ] `P0` Code: HumanEval, MBPP.
-- [ ] `P0` Отчёт с таблицей результатов и погрешностями.
+- [ ] `P0` Отчёт с таблицей результатов и погрешностями (агрегатор `aurora-report` готов; нужны прогоны нескольких seed).
 - [ ] `P1` Анализ ошибок и типичных failure modes.
 - [ ] `P1` Human evaluation для RU/EN.
 
@@ -466,6 +467,7 @@
 15. [x] Реализовать n-gram проверку benchmark contamination (`aurora-contamination`).
 16. [x] Добавить опциональный W&B experiment tracker.
 17. [x] Реализовать zero-shot multiple-choice harness (`aurora-zero-shot`).
+18. [x] Добавить агрегацию результатов с mean/std (`aurora-report`).
 
 ---
 

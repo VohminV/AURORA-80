@@ -294,6 +294,19 @@ python -m aurora.benchmarks.zero_shot \
 
 Каждая задача — JSONL с полями `context`, `choices` и `answer` (индекс правильного варианта): `{"context": "...", "choices": ["...", "..."], "answer": 1}`. Harness считает сумму log-prob продолжения каждого варианта после общего контекста и выбирает максимум; `--normalize-by-length` переходит к средней log-prob. `--limit` ограничивает число примеров, `--predictions` пишет построчные предсказания для анализа ошибок. Датасеты нужно предварительно привести к этому формату; harness не содержит загрузчиков MMLU/HellaSwag/ARC/WinoGrande и не выполняет few-shot сборку промптов. Оценка идёт последовательно по вариантам, без батчинга, поэтому на больших бенчмарках она медленная.
 
+### 9. Сводный отчёт по запускам
+
+```bash
+python -m aurora.report \
+  --report seed0=reports/eval_seed0.json \
+  --report seed1=reports/eval_seed1.json \
+  --report seed0_zeroshot=reports/zero_shot_seed0.json \
+  --output reports/results.md \
+  --json reports/results.json
+```
+
+Агрегатор принимает eval-отчёты (`results.<domain>.perplexity`) и zero-shot-отчёты (`tasks.<task>.accuracy`), считает mean, выборочное std (ddof=1), min/max и число запусков по каждой задаче. В Markdown-таблице также перечислены run id, git commit, шаг чекпоинта и версии датасетов. Инструмент не проверяет, что запуски используют одинаковые данные, compute, токенизатор и seed, и не выполняет статистических тестов: при одном отчёте std равен 0.
+
 ---
 
 ## Обучение на реальном корпусе
@@ -579,6 +592,7 @@ Eval-отчёт (`reports/smoke_eval.json`) теперь включает `run_m
 - Transformer baseline с RoPE и KV-cache, совместимый с trainer/inference/eval.
 - Единый eval harness с per-domain perplexity, dataset_version и git/окружением в JSON-отчёте.
 - Zero-shot multiple-choice harness с log-prob скорингом, per-task accuracy и JSONL-предсказаниями (`aurora-zero-shot`).
+- Агрегация eval/zero-shot отчётов с mean/std по запускам и Markdown-таблицей (`aurora-report`).
 - Ternary-квантование, упаковка 2-bit, QAT через straight-through estimator и версионированный AURORA-TQ архив.
 - Offline-калибровка групповых масштабов по минимальной ошибке реконструкции (`--calibrate`).
 - Сравнение FP32/FP16/ternary/INT8/INT4 на одном чекпоинте и датасете (`aurora-quant-bench`).
@@ -591,7 +605,7 @@ Eval-отчёт (`reports/smoke_eval.json`) теперь включает `run_m
 - Автоматический BF16/FP16 autocast на CUDA при генерации и оценке perplexity.
 - CUDA AMP (BF16, FP16+GradScaler) и `torch.compile` (`aot_eager`, `inductor`) проверены на 100M; CUDA-замеры — в `docs/benchmarks.md`.
 - CI (lint, mypy, tests, end-to-end smoke на чистом runner), `Makefile`, benchmark throughput/RAM/latency.
-- 168 тестов: причинность, состояния, память, маршрутизация, квантование, сравнение квантизации, длинный контекст, абляция компонентов, zero-shot оценка, обучение, resume, провенанс, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, contamination, статистика корпуса, W&B tracker, курирование корпуса, baseline и инференс.
+- 175 тестов: причинность, состояния, память, маршрутизация, квантование, сравнение квантизации, длинный контекст, абляция компонентов, zero-shot оценка, агрегация результатов, обучение, resume, провенанс, чекпоинты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, contamination, статистика корпуса, W&B tracker, курирование корпуса, baseline и инференс.
 
 ---
 
@@ -650,6 +664,7 @@ AURORA-80/
 │   ├── inference.py
 │   ├── model_card.py
 │   ├── provenance.py
+│   ├── report.py
 │   ├── server.py
 │   └── utils.py
 ├── configs/
@@ -703,7 +718,7 @@ mypy aurora
 ## Документация
 
 - `docs/benchmarks.md` — замеры и команды воспроизведения.
-- `docs/formats.md` — формат чекпоинтов, manifest, model card, отчётов corpus stats/contamination и AURORA-TQ.
+- `docs/formats.md` — формат чекпоинтов, manifest, model card, отчётов corpus stats/contamination/zero-shot/сводного и AURORA-TQ.
 - `docs/model_card_100m.md` — черновик model card для конфигурации AURORA-100M.
 - `docs/adr/` — architecture decision records.
 
