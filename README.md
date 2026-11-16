@@ -307,6 +307,19 @@ python -m aurora.report \
 
 Агрегатор принимает eval-отчёты (`results.<domain>.perplexity`) и zero-shot-отчёты (`tasks.<task>.accuracy`), считает mean, выборочное std (ddof=1), min/max и число запусков по каждой задаче. В Markdown-таблице также перечислены run id, git commit, шаг чекпоинта и версии датасетов. Инструмент не проверяет, что запуски используют одинаковые данные, compute, токенизатор и seed, и не выполняет статистических тестов: при одном отчёте std равен 0.
 
+### 10. Реестр экспериментов
+
+```bash
+python -m aurora.registry \
+  --runs runs \
+  --reports reports \
+  --verify \
+  --output reports/registry.json \
+  --markdown reports/registry.md
+```
+
+`aurora-registry` рекурсивно собирает `*.pt`-чекпоинты и `*.json`-отчёты, группирует их по `run_metadata.run_id` и пишет JSON/Markdown с git commit, шагом, seed, версиями датасетов и сводкой метрик. Отчёты распознаются как eval, zero-shot, quantization, ablation, state stability, сводный отчёт или dataset manifest; неизвестные JSON помечаются `unknown`. Метаданные чекпоинтов читаются через `weights_only=True` и `mmap`, поэтому большие веса не обязаны полностью помещаться в RAM. `--verify` дополнительно считает SHA-256 всех артефактов и читает их целиком. Битые файлы попадают в `errors`, но не прерывают сбор. Реестр не проверяет finite-тензоры и качество моделей; для этого есть `aurora-evaluate` и валидация чекпоинтов при загрузке.
+
 ---
 
 ## Обучение на реальном корпусе
@@ -615,6 +628,7 @@ Eval-отчёт (`reports/smoke_eval.json`) теперь включает `run_m
 - Zero-shot multiple-choice harness с log-prob скорингом, per-task accuracy и JSONL-предсказаниями (`aurora-zero-shot`).
 - Агрегация eval/zero-shot отчётов с mean/std по запускам и Markdown-таблицей (`aurora-report`).
 - Ротация бэкапов best/latest-чекпоинтов и необязательные webhook-алерты при деградации, early stopping и non-finite loss/grad.
+- Реестр экспериментов и артефактов с группировкой по run id и опциональной проверкой SHA-256 (`aurora-registry`).
 - Ternary-квантование, упаковка 2-bit, QAT через straight-through estimator и версионированный AURORA-TQ архив.
 - Offline-калибровка групповых масштабов по минимальной ошибке реконструкции (`--calibrate`).
 - Сравнение FP32/FP16/ternary/INT8/INT4 на одном чекпоинте и датасете (`aurora-quant-bench`).
@@ -627,7 +641,7 @@ Eval-отчёт (`reports/smoke_eval.json`) теперь включает `run_m
 - Автоматический BF16/FP16 autocast на CUDA при генерации и оценке perplexity.
 - CUDA AMP (BF16, FP16+GradScaler) и `torch.compile` (`aot_eager`, `inductor`) проверены на 100M; CUDA-замеры — в `docs/benchmarks.md`.
 - CI (lint, mypy, tests, end-to-end smoke на чистом runner), `Makefile`, benchmark throughput/RAM/latency.
-- 184 теста: причинность, состояния, память, маршрутизация, квантование, сравнение квантизации, длинный контекст, абляция компонентов, zero-shot оценка, агрегация результатов, обучение, resume, провенанс, чекпоинты, бэкапы и алерты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, contamination, статистика корпуса, W&B tracker, курирование корпуса, baseline и инференс.
+- 190 тестов: причинность, состояния, память, маршрутизация, квантование, сравнение квантизации, длинный контекст, абляция компонентов, zero-shot оценка, агрегация результатов, реестр экспериментов, обучение, resume, провенанс, чекпоинты, бэкапы и алерты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, contamination, статистика корпуса, W&B tracker, курирование корпуса, baseline и инференс.
 
 ---
 
@@ -687,6 +701,7 @@ AURORA-80/
 │   ├── inference.py
 │   ├── model_card.py
 │   ├── provenance.py
+│   ├── registry.py
 │   ├── report.py
 │   ├── server.py
 │   └── utils.py
@@ -741,7 +756,7 @@ mypy aurora
 ## Документация
 
 - `docs/benchmarks.md` — замеры и команды воспроизведения.
-- `docs/formats.md` — формат чекпоинтов, manifest, model card, отчётов corpus stats/contamination/zero-shot/сводного и AURORA-TQ.
+- `docs/formats.md` — формат чекпоинтов, manifest, model card, отчётов corpus stats/contamination/zero-shot/сводного/реестра и AURORA-TQ.
 - `docs/model_card_100m.md` — черновик model card для конфигурации AURORA-100M.
 - `docs/adr/` — architecture decision records.
 

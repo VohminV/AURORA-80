@@ -405,6 +405,32 @@ treated as one independent run. `std` is the sample standard deviation
 summary table, one row per input run with run id/git/step/dataset versions, and
 the limitations.
 
+## Experiment registry (`registry.json`)
+
+`aurora-registry` scans checkpoint and report directories and writes:
+
+| Key | Meaning |
+| --- | --- |
+| `format_version` | Registry schema version (currently `1`) |
+| `created_utc` | Creation timestamp |
+| `settings` | Scanned roots and the `verify` flag |
+| `runs` | Groups keyed by `run_metadata.run_id` with git commit, dataset versions and artifact paths |
+| `runs[].checkpoints`, `runs[].reports` | Artifact paths belonging to the run |
+| `artifacts` | Flat list of checkpoint and report entries |
+| `artifacts[].sha256` | Digest when `--verify` is used, otherwise `null` |
+| `errors` | Unreadable or invalid artifacts with path and error text |
+| `limitations` | Metadata and verification caveats |
+
+Checkpoint entries contain `step`, `qat_active`, `best_val`, `format_version`,
+`architecture`, `seed`, `run_id`, git state, dataset versions, stored metrics
+and the full config. Checkpoint tensors are loaded with `weights_only=True` and
+`mmap=True`; finiteness validation is intentionally skipped. Report entries are
+classified as `eval`, `zero_shot`, `quantization`, `ablation`,
+`state_stability`, `summary` or `dataset_manifest`; other JSON objects become
+`unknown`. Reports and legacy checkpoints without a `run_id` are grouped by
+parent directory. `--verify` hashes every artifact fully, which can be slow for
+large checkpoints.
+
 ## Quantization comparison report (`quantization.json`)
 
 `aurora.benchmarks.quantization` writes one report for all weight-only variants:
