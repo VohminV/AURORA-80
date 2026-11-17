@@ -426,7 +426,7 @@ Checkpoint entries contain `step`, `qat_active`, `best_val`, `format_version`,
 and the full config. Checkpoint tensors are loaded with `weights_only=True` and
 `mmap=True`; finiteness validation is intentionally skipped. Report entries are
 classified as `eval`, `zero_shot`, `quantization`, `ablation`,
-`state_stability`, `summary`, `sweep` or `dataset_manifest`; other JSON objects
+`state_stability`, `summary`, `sweep`, `scaling` or `dataset_manifest`; other JSON objects
 become `unknown`. Reports and legacy checkpoints without a `run_id` are grouped by
 parent directory. `--verify` hashes every artifact fully, which can be slow for
 large checkpoints.
@@ -549,3 +549,49 @@ checkpoints. `--dry-run` writes the configs and returns `planned` trials without
 touching the data. In a real run a trial that raises is marked `failed` and the
 sweep continues. Failure to resolve the base config, dataset files or the trial
 cap aborts the whole sweep before training.
+
+## Scaling law report (`scaling.json`)
+
+`aurora.scaling` fits `L = E + A * x^-alpha` per axis and, when enough points
+are available, `L = E + A*N^-alpha + B*D^-beta`. Points come from checkpoints
+(`--point NAME=PATH.pt`) and/or a JSON file (`--points points.json`):
+
+```json
+{
+  "points": [
+    {
+      "name": "30m",
+      "total_parameters": 30710704,
+      "active_parameters": 20093872,
+      "tokens_seen": 614400000,
+      "loss": 3.12,
+      "metadata": {"seed": 42}
+    }
+  ]
+}
+```
+
+`parameters`/`total_parameters`, `tokens`/`tokens_seen` and `loss` are required;
+`active_parameters` and `metadata` are optional. `compute` and `active_compute`
+in reports are derived as `6*N*D` and may be present when a report is re-read.
+
+| Key | Meaning |
+| --- | --- |
+| `format_version` | Scaling report schema version (currently `1`) |
+| `created_utc` | Report timestamp |
+| `git` | Git commit, branch and dirty state |
+| `settings` | Holdout name, compute budgets and fitted axes |
+| `points[]` | Name, parameters, active parameters, tokens, loss, derived compute and metadata |
+| `fits.<axis>` | `E`, `A`, `alpha`, RMSE, R², point count and observed range |
+| `holdout` | `null`, `evaluated` with per-axis prediction errors, or `skipped` |
+| `bivariate` | `E`, `A`, `alpha`, `B`, `beta`, RMSE, R², condition, reliability, observed ranges and optional warning |
+| `compute_optimal[]` | Optimal parameters/tokens at `6*N*D = C`, predicted loss and extrapolation flag |
+| `limitations` | Comparability, MoE compute and extrapolation caveats |
+
+At least four points are needed for a stable per-axis fit. The bivariate fit is
+reported only with at least five points and is marked reliable only when the
+design condition number is below `1e8`; compute-optimal estimates are emitted
+only for reliable fits. Automatic holdout requires five points (four training
+points plus the holdout); an explicit holdout is skipped when fewer than four
+points remain. Uses `--output` for JSON and optionally `--markdown` for a
+human-readable report.

@@ -94,7 +94,7 @@
 - [x] CI: lint, mypy, tests и end-to-end smoke на чистом runner.
 - [x] Docker CPU/CUDA, `Makefile`.
 - [x] ADR и документация форматов.
-- [x] 208 тестов; `ruff`, `mypy` и format-check проходят.
+- [x] 218 тестов; `ruff`, `mypy` и format-check проходят.
 
 ### 0.2 Чего ещё нет
 
@@ -145,7 +145,7 @@ throughput; CUDA eager медленнее CPU из-за последовател
 - [x] `P0` Обучение, validation, checkpoints, resume, QAT.
 - [x] `P0` Данные: prepare, manifest, versioning, mixture, document split.
 - [x] `P0` Inference: generation, perplexity, HTTP API, batched/streaming.
-- [x] `P0` 208 тестов, `ruff`, `mypy`, end-to-end smoke на чистом runner.
+- [x] `P0` 218 тестов, `ruff`, `mypy`, end-to-end smoke на чистом runner.
 - [x] `P0` Проверены AMP, gradient checkpointing и `torch.compile` на CUDA.
 - [x] `P0` Замерены throughput, память и latency прототипа (CPU и CUDA).
 
@@ -242,12 +242,13 @@ throughput; CUDA eager медленнее CPU из-за последовател
 
 ### 3.2 Scaling laws
 
-- [ ] `P0` Добавить конфиги и серию 10M/30M/100M/300M.
-- [ ] `P0` Fit scaling law по loss от compute/parameters/tokens.
+- [x] `P0` Добавить конфиги 10M/30M/100M/300M.
+- [ ] `P0` Прогнать серию 10M/30M/100M/300M на одном корпусе и протоколе.
+- [ ] `P0` Fit scaling law по loss от compute/parameters/tokens на реальных запусках.
 - [ ] `P0` Проверить предсказание на 300M.
-- [ ] `P1` Оценить compute-optimal token budget.
+- [ ] `P1` Оценить compute-optimal token budget на реальной серии (инструмент готов).
 - [ ] `P1` Сравнить scaling curve с Transformer baseline.
-- [ ] `P1` Сделать fitting-инструмент с артефактом отчёта.
+- [x] `P1` Сделать fitting-инструмент с артефактом отчёта (`aurora-scaling`; проверен на синтетике).
 
 ### 3.3 Длинный контекст и состояние
 
@@ -472,7 +473,8 @@ throughput; CUDA eager медленнее CPU из-за последовател
 1. [ ] `P0` Определить лицензию и правила использования.
 2. [x] `P0` Реализовать hyperparameter sweep runner с генерацией конфигов,
    запуском и сводкой результатов (`aurora-sweep`).
-3. [ ] `P0` Добавить конфиги 10M/30M/300M и инструмент fit scaling law.
+3. [x] `P0` Добавить конфиги 10M/30M/300M и инструмент fit scaling law
+   (`aurora-scaling`; эмпирический fit ещё не выполнен).
 4. [ ] `P1` Реализовать state reset на границах документов и проверить на smoke.
 5. [ ] `P1` Расширить `aurora-ablate` на `n_levels`, `d_state`, `memory_heads`,
    `n_experts`, `top_k`.

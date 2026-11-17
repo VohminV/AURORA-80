@@ -1,0 +1,38 @@
+model:
+  vocab_size: 32768
+  d_model: 192
+  n_layers: 4
+  n_levels: 4
+  d_state: 32
+  memory_heads: 2
+  n_experts: 4
+  top_k: 2
+  expert_hidden: 320
+  aux_loss_coef: 0.01
+  router_z_loss_coef: 0.001
+  memory_loss_coef: 0.01
+  consistency_loss_coef: 0.01
+  dropout: 0.0
+  layer_scale_init: 0.1
+  tie_embeddings: true
+
+training:
+  train_path: data/processed/train.bin
+  val_path: data/processed/val.bin
+  seq_len: 512
+  dtype: uint16
+  batch_size: 32
+  grad_accum_steps: 4
+  max_steps: 3125
+  warmup_steps: 50
+  min_lr_ratio: 0.1
+  learning_rate: 0.0006
+  weight_decay: 0.1
+  grad_clip: 1.0
+  eval_interval: 250
+  eval_batches: 20
+  log_interval: 10
+  save_interval: 500
+  output_dir: runs/aurora_10m
+  device: auto
+  dtype_amp: auto

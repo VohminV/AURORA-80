@@ -92,6 +92,8 @@ def _report_kind(report: dict[str, Any]) -> str:
             return "zero_shot"
     if {"tokenizer", "outputs", "dataset_version"} <= set(report):
         return "dataset_manifest"
+    if isinstance(report.get("points"), list) and isinstance(report.get("fits"), dict):
+        return "scaling"
     return "unknown"
 
 
@@ -166,6 +168,21 @@ def _report_summary(report: dict[str, Any], kind: str) -> dict[str, Any]:
             "best_overrides": best.get("overrides"),
             "best_mean_final_loss": _number(best.get("mean_final_loss")),
         }
+    if kind == "scaling":
+        holdout = report.get("holdout")
+        if not isinstance(holdout, dict):
+            holdout = {}
+        bivariate = report.get("bivariate")
+        if not isinstance(bivariate, dict):
+            bivariate = {}
+        return {
+            "points": len(report["points"]),
+            "axes": sorted(report["fits"]),
+            "holdout": holdout.get("name"),
+            "holdout_status": holdout.get("status"),
+            "bivariate_reliable": bivariate.get("reliable"),
+            "compute_estimates": len(report.get("compute_optimal") or []),
+        }
     if kind == "dataset_manifest":
         outputs = report.get("outputs")
         if not isinstance(outputs, dict):
@@ -198,6 +215,9 @@ def _report_entry(path: Path, verify: bool) -> dict[str, Any]:
         git = evaluation.get("git") if isinstance(evaluation, dict) else {}
     if not isinstance(git, dict):
         git = {}
+    if not git:
+        top_level_git = report.get("git")
+        git = top_level_git if isinstance(top_level_git, dict) else {}
     checkpoint = report.get("checkpoint")
     if not isinstance(checkpoint, dict):
         checkpoint = {}

@@ -54,6 +54,7 @@ def test_report_kind_detects_known_reports() -> None:
         ({"tasks": {"mmlu": {"accuracy": 0.5}}}, "zero_shot"),
         ({"metrics": [], "reports": []}, "summary"),
         ({"trials": [], "configurations": []}, "sweep"),
+        ({"points": [], "fits": {}}, "scaling"),
         (
             {"tokenizer": {}, "outputs": {}, "dataset_version": "sha256:data"},
             "dataset_manifest",
