@@ -8,9 +8,9 @@
 
 Исследовательский проект собственной языковой модели: без Transformer и self-attention, с многоуровневой рекуррентной динамикой, ассоциативной памятью и адаптивной маршрутизацией экспертов.
 
-В репозитории реализован рабочий прототип на PyTorch: архитектура, обучение, токенизация, потоковая подготовка данных, ternary-квантование (QAT), генерация, оценка perplexity, единый eval harness, Transformer baseline для честного сравнения и тесты.
+В репозитории реализован рабочий инженерный прототип на PyTorch: архитектура, обучение, токенизация, потоковая подготовка данных, ternary-квантование (QAT), генерация, оценка perplexity, единый eval harness, Transformer baseline для честного сравнения и тесты.
 
-> **Статус:** AURORA-100M — исследовательский прототип. Архитектура ещё не доказала превосходство над Transformer. Целевая модель AURORA-80B требует отдельной вычислительной инфраструктуры.
+> **Текущий статус:** реализован инженерный PyTorch-прототип, 229 тестов проходят. Обученного AURORA-100M, реального корпуса, публичных бенчмарков, сравнения с Transformer и 8-GB runtime пока нет. Архитектура не доказала превосходство над Transformer, AURORA-80B остаётся расчётной конфигурацией.
 
 ---
 
@@ -26,6 +26,23 @@
 | Языки | Русский, английский |
 | Квантование | AURORA-TQ, ternary + group scales |
 | Runtime | PyTorch-прототип; C++/CUDA runtime — следующий этап |
+
+---
+
+## Текущий срез реализации
+
+| Блок концепции | Что реально готово |
+| --- | --- |
+| Архитектура | Recurrent core, associative memory, MoE, residual/LayerScale и Transformer baseline; smoke-тесты и проверка причинности |
+| Обучение и инфраструктура | Trainer, AMP, checkpoint/resume, data pipeline, eval harness, sweep, scaling, ablation, document reset; 229 тестов |
+| QAT и формат весов | Ternary STE, packing/unpacking, AURORA-TQ v1 и quantization benchmark; качество на 100M+ не проверено |
+| Реальные данные | Только пайплайн подготовки; RU/EN/code-корпуса и обученного токенизатора 64k нет |
+| AURORA-100M | Конфиг и расчёт параметров; обученного чекпоинта и сравнения с Transformer нет |
+| Scaling series | Конфиги 10M–300M и инструмент fit; реальных прогонов и scaling law нет |
+| 1B/80B | Расчётные конфиги; distributed training, expert parallelism и sharded checkpoints не реализованы |
+| Оценка качества | Perplexity/zero-shot/report harness готовы; публичных бенчмарков и multi-seed отчётов нет |
+| Runtime 8 GB | Только dense PyTorch path; ternary mmap, expert cache, C++/CUDA runtime и целевой замер не готовы |
+| Продукт и релиз | Нет SFT/alignment/safety, лицензий и финальных model/data card |
 
 ---
 
@@ -840,7 +857,7 @@ mypy aurora
 ## Документация
 
 - `docs/benchmarks.md` — замеры и команды воспроизведения.
-- `docs/formats.md` — формат чекпоинтов, manifest, model card, отчётов corpus stats/contamination/zero-shot/сводного/реестра/sweep/scaling и AURORA-TQ.
+- `docs/formats.md` — формат чекпоинтов, manifest, model card, отчётов eval/zero-shot/quantization/ablation/state stability/sweep/scaling/реестра/corpus stats/contamination и AURORA-TQ.
 - `docs/model_card_100m.md` — черновик model card для конфигурации AURORA-100M.
 - `docs/adr/` — architecture decision records.
 
