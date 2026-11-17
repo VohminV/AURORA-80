@@ -16,6 +16,7 @@ training:
   val_path: data/smoke/val.bin
   seq_len: 32
   dtype: uint16
+  document_reset: true
   batch_size: 4
   grad_accum_steps: 1
   max_steps: 50

@@ -94,7 +94,7 @@
 - [x] CI: lint, mypy, tests и end-to-end smoke на чистом runner.
 - [x] Docker CPU/CUDA, `Makefile`.
 - [x] ADR и документация форматов.
-- [x] 218 тестов; `ruff`, `mypy` и format-check проходят.
+- [x] 226 тестов; `ruff`, `mypy` и format-check проходят.
 
 ### 0.2 Чего ещё нет
 
@@ -145,7 +145,7 @@ throughput; CUDA eager медленнее CPU из-за последовател
 - [x] `P0` Обучение, validation, checkpoints, resume, QAT.
 - [x] `P0` Данные: prepare, manifest, versioning, mixture, document split.
 - [x] `P0` Inference: generation, perplexity, HTTP API, batched/streaming.
-- [x] `P0` 218 тестов, `ruff`, `mypy`, end-to-end smoke на чистом runner.
+- [x] `P0` 226 тестов, `ruff`, `mypy`, end-to-end smoke на чистом runner.
 - [x] `P0` Проверены AMP, gradient checkpointing и `torch.compile` на CUDA.
 - [x] `P0` Замерены throughput, память и latency прототипа (CPU и CUDA).
 
@@ -254,7 +254,7 @@ throughput; CUDA eager медленнее CPU из-за последовател
 
 - [ ] `P0` Обучение/оценка на 2k/4k/8k.
 - [ ] `P0` Проверка деградации памяти и состояния.
-- [ ] `P0` Решить и реализовать state reset на границах документов.
+- [x] `P0` Решить и реализовать state reset на границах документов (EOS-маска в обучении и оценке).
 - [ ] `P1` Chunkwise parallel scan.
 - [ ] `P1` Оценка long-context задач.
 - [ ] `P1` Сравнить нулевое состояние, reset и learned initial state.
@@ -475,7 +475,7 @@ throughput; CUDA eager медленнее CPU из-за последовател
    запуском и сводкой результатов (`aurora-sweep`).
 3. [x] `P0` Добавить конфиги 10M/30M/300M и инструмент fit scaling law
    (`aurora-scaling`; эмпирический fit ещё не выполнен).
-4. [ ] `P1` Реализовать state reset на границах документов и проверить на smoke.
+4. [x] `P1` Реализовать state reset на границах документов и проверить на smoke.
 5. [ ] `P1` Расширить `aurora-ablate` на `n_levels`, `d_state`, `memory_heads`,
    `n_experts`, `top_k`.
 6. [ ] `P1` Сделать memory-mapped загрузку экспертов и прототип expert cache.

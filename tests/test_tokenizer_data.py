@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 import torch
 
-from aurora.data.dataset import MemmapTokenDataset
+from aurora.data.dataset import MemmapTokenDataset, document_reset_mask
 from aurora.data.prepare import FileFingerprint, iter_text_chunks, iter_text_documents
 from aurora.data.prepare import main as prepare_main
 from aurora.tokenizer import ByteTokenizer, SentencePieceTokenizer
@@ -23,6 +23,25 @@ def test_byte_tokenizer_roundtrip() -> None:
     assert ids[0] == tokenizer.bos_id
     assert ids[-1] == tokenizer.eos_id
     assert tokenizer.decode(ids) == text
+
+
+def test_document_reset_mask_marks_tokens_after_eos() -> None:
+    input_ids = torch.tensor([[1, 2, 3, 2, 4], [2, 5, 6, 7, 2]])
+    mask = document_reset_mask(input_ids, eos_token_id=2)
+    expected = torch.tensor(
+        [
+            [False, False, True, False, True],
+            [False, True, False, False, False],
+        ]
+    )
+    torch.testing.assert_close(mask, expected)
+
+
+def test_document_reset_mask_validates_inputs() -> None:
+    with pytest.raises(ValueError):
+        document_reset_mask(torch.tensor([1, 2]), eos_token_id=2)
+    with pytest.raises(ValueError):
+        document_reset_mask(torch.ones(1, 2, dtype=torch.long), eos_token_id=-1)
 
 
 def test_prepare_and_dataset(tmp_path: Path) -> None:

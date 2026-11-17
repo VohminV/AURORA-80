@@ -4,6 +4,7 @@ import torch
 from torch import nn
 
 from aurora.architecture.layers import RMSNorm
+from aurora.architecture.state import apply_reset, prepare_reset_mask
 
 
 class RecurrentLevel(nn.Module):
@@ -61,7 +62,10 @@ class RecurrentCore(nn.Module):
         )
 
     def forward(
-        self, x: torch.Tensor, state: torch.Tensor | None = None
+        self,
+        x: torch.Tensor,
+        state: torch.Tensor | None = None,
+        reset_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         if x.ndim != 3:
             raise ValueError("RecurrentCore expects input of shape (batch, time, d_model)")
@@ -74,9 +78,11 @@ class RecurrentCore(nn.Module):
                 f"Invalid recurrent state shape {tuple(state.shape)}, "
                 f"expected {(batch_size, self.n_levels, self.d_state)}"
             )
+        reset_mask = prepare_reset_mask(reset_mask, batch_size, seq_len, x.device)
 
         outputs = []
         for token_index in range(seq_len):
+            state = apply_reset(state, reset_mask, token_index)
             x_token = x[:, token_index]
             next_levels = [
                 level(x_token, state[:, level_index])

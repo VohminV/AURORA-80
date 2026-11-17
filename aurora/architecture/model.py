@@ -7,7 +7,7 @@ from aurora.architecture.block import AuroraBlock
 from aurora.architecture.language_head import LanguageHead
 from aurora.architecture.layers import init_module_weights, scale_residual_outputs
 from aurora.architecture.output import LanguageModelOutput
-from aurora.architecture.state import AuroraState
+from aurora.architecture.state import AuroraState, prepare_reset_mask
 from aurora.config import ModelConfig
 
 AuroraOutput = LanguageModelOutput
@@ -41,11 +41,19 @@ class AuroraModel(nn.Module):
             states.append(block.init_state(batch_size, device))
         return AuroraState(blocks=states)
 
-    def forward(self, input_ids: torch.Tensor, state: AuroraState | None = None) -> AuroraOutput:
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        state: AuroraState | None = None,
+        reset_mask: torch.Tensor | None = None,
+    ) -> AuroraOutput:
         if input_ids.ndim != 2:
             raise ValueError("input_ids must have shape (batch, time)")
         if state is not None and len(state.blocks) != len(self.blocks):
             raise ValueError("State does not match model depth")
+        reset_mask = prepare_reset_mask(
+            reset_mask, input_ids.shape[0], input_ids.shape[1], input_ids.device
+        )
 
         x = self.dropout(self.embed(input_ids))
         aux_loss = torch.zeros((), device=x.device, dtype=torch.float32)
@@ -57,7 +65,7 @@ class AuroraModel(nn.Module):
         for block, block_state in zip(self.blocks, block_states, strict=True):
             assert isinstance(block, AuroraBlock)
             x, next_state, block_aux_loss, block_memory_loss, block_consistency_loss = block(
-                x, block_state
+                x, block_state, reset_mask
             )
             aux_loss = aux_loss + block_aux_loss.float()
             memory_loss = memory_loss + block_memory_loss.float()

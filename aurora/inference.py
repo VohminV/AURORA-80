@@ -9,6 +9,7 @@ from torch import nn
 
 from aurora.architecture.factory import CausalLanguageModel, build_model
 from aurora.config import ExperimentConfig
+from aurora.data.dataset import document_reset_mask
 from aurora.quantization import convert_to_ternary
 from aurora.training.checkpoint import load_checkpoint
 from aurora.utils import resolve_amp_dtype, resolve_device
@@ -33,8 +34,22 @@ def load_model_from_checkpoint(
     return model, config
 
 
-def model_output(model: nn.Module, input_ids: torch.Tensor, state: Any = None) -> Any:
-    return cast(CausalLanguageModel, model)(input_ids, state=state)
+def reset_mask_for_config(input_ids: torch.Tensor, config: ExperimentConfig) -> torch.Tensor | None:
+    if not config.training.document_reset:
+        return None
+    return document_reset_mask(input_ids, config.training.eos_token_id)
+
+
+def model_output(
+    model: nn.Module,
+    input_ids: torch.Tensor,
+    state: Any = None,
+    reset_mask: torch.Tensor | None = None,
+) -> Any:
+    language_model = cast(CausalLanguageModel, model)
+    if reset_mask is None:
+        return language_model(input_ids, state=state)
+    return language_model(input_ids, state=state, reset_mask=reset_mask)
 
 
 def inference_autocast(device: torch.device, dtype_amp: str) -> Any:

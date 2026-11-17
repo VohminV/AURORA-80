@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from aurora.architecture.layers import RMSNorm
+from aurora.architecture.state import apply_reset, prepare_reset_mask
 
 
 @dataclass
@@ -77,9 +78,14 @@ class AssociativeMemory(nn.Module):
         )
 
     def forward(
-        self, x: torch.Tensor, state: torch.Tensor | None = None
+        self,
+        x: torch.Tensor,
+        state: torch.Tensor | None = None,
+        reset_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        output, next_state, _ = self.forward_with_losses(x, state, track_losses=False)
+        output, next_state, _ = self.forward_with_losses(
+            x, state, track_losses=False, reset_mask=reset_mask
+        )
         return output, next_state
 
     def forward_with_losses(
@@ -87,6 +93,7 @@ class AssociativeMemory(nn.Module):
         x: torch.Tensor,
         state: torch.Tensor | None = None,
         track_losses: bool = True,
+        reset_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, MemoryLosses]:
         if x.ndim != 3:
             raise ValueError("AssociativeMemory expects input of shape (batch, time, d_model)")
@@ -99,6 +106,7 @@ class AssociativeMemory(nn.Module):
             raise ValueError(
                 f"Invalid memory state shape {tuple(state.shape)}, expected {expected_shape}"
             )
+        reset_mask = prepare_reset_mask(reset_mask, batch_size, seq_len, x.device)
 
         query = self.q_proj(x).view(batch_size, seq_len, self.n_heads, self.head_dim)
         key = self.k_proj(x).view(batch_size, seq_len, self.n_heads, self.head_dim)
@@ -113,6 +121,7 @@ class AssociativeMemory(nn.Module):
         losses = zero_memory_losses(x.device)
         reads = []
         for token_index in range(seq_len):
+            state = apply_reset(state, reset_mask, token_index)
             query_token = query[:, :, token_index]
             key_token = key[:, :, token_index]
             value_token = value[:, :, token_index]

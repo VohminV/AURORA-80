@@ -9,7 +9,12 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from aurora.data.dataset import MemmapTokenDataset
-from aurora.inference import inference_autocast, load_model_from_checkpoint
+from aurora.inference import (
+    inference_autocast,
+    load_model_from_checkpoint,
+    model_output,
+    reset_mask_for_config,
+)
 from aurora.utils import resolve_device
 
 
@@ -37,7 +42,9 @@ def main(argv: Sequence[str] | None = None) -> None:
         for inputs, targets in loader:
             inputs = inputs.to(device)
             targets = targets.to(device)
-            logits = model(inputs).logits
+            logits = model_output(
+                model, inputs, reset_mask=reset_mask_for_config(inputs, config)
+            ).logits
             loss = F.cross_entropy(
                 logits.reshape(-1, config.model.vocab_size),
                 targets.reshape(-1),

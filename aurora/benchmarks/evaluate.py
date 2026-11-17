@@ -14,7 +14,12 @@ from torch.utils.data import DataLoader
 from aurora.config import ExperimentConfig
 from aurora.data.dataset import MemmapTokenDataset
 from aurora.data.provenance import resolve_dataset_source
-from aurora.inference import inference_autocast, load_model_from_checkpoint, model_output
+from aurora.inference import (
+    inference_autocast,
+    load_model_from_checkpoint,
+    model_output,
+    reset_mask_for_config,
+)
 from aurora.provenance import environment_metadata, git_metadata, utc_now
 from aurora.training.checkpoint import load_checkpoint
 from aurora.utils import resolve_device
@@ -87,7 +92,9 @@ def evaluate_file(
         for inputs, targets in loader:
             inputs = inputs.to(device)
             targets = targets.to(device)
-            logits = model_output(model, inputs).logits
+            logits = model_output(
+                model, inputs, reset_mask=reset_mask_for_config(inputs, config)
+            ).logits
             loss = F.cross_entropy(
                 logits.reshape(-1, config.model.vocab_size),
                 targets.reshape(-1),

@@ -27,6 +27,21 @@ def test_recurrent_core_is_causal_and_stateful() -> None:
     torch.testing.assert_close(continuation_output, full_output[:, 4:])
 
 
+def test_recurrent_core_document_reset_matches_fresh_segment() -> None:
+    torch.manual_seed(0)
+    core = RecurrentCore(d_model=32, d_state=16, n_levels=2)
+    x = torch.randn(1, 10, 32)
+    with torch.no_grad():
+        full_output, _ = core(x)
+        segment_output, segment_state = core(x[:, 5:])
+        reset_mask = torch.zeros(1, 10, dtype=torch.bool)
+        reset_mask[:, 5] = True
+        reset_output, reset_state = core(x, reset_mask=reset_mask)
+    torch.testing.assert_close(reset_output[:, :5], full_output[:, :5])
+    torch.testing.assert_close(reset_output[:, 5:], segment_output)
+    torch.testing.assert_close(reset_state, segment_state)
+
+
 def test_recurrent_core_reset_is_deterministic() -> None:
     torch.manual_seed(0)
     core = RecurrentCore(d_model=32, d_state=16, n_levels=2)

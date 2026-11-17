@@ -109,6 +109,8 @@ class TrainingConfig:
     verify_data: bool = True
     seq_len: int = 512
     dtype: str = "uint16"
+    document_reset: bool = False
+    eos_token_id: int = 2
     batch_size: int = 4
     grad_accum_steps: int = 8
     num_workers: int = 0
@@ -173,6 +175,10 @@ class TrainingConfig:
         object.__setattr__(self, "dataset_manifests", tuple(self.dataset_manifests))
         if self.dtype not in {"uint16", "uint32", "int32", "int64"}:
             raise ValueError("dtype must be one of uint16, uint32, int32, int64")
+        if self.eos_token_id < -1:
+            raise ValueError("eos_token_id must be at least -1")
+        if self.document_reset and self.eos_token_id < 0:
+            raise ValueError("document_reset requires a non-negative eos_token_id")
         if self.seq_len <= 0 or self.batch_size <= 0 or self.grad_accum_steps <= 0:
             raise ValueError("seq_len, batch_size and grad_accum_steps must be positive")
         if self.max_steps <= 0 or self.num_workers < 0:

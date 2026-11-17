@@ -87,6 +87,21 @@ def test_model_state_continuation(tiny_model_config: ModelConfig) -> None:
     torch.testing.assert_close(full.logits[:, 5:], continuation.logits)
 
 
+def test_model_document_reset_matches_fresh_segment(tiny_model_config: ModelConfig) -> None:
+    torch.manual_seed(0)
+    model = AuroraModel(tiny_model_config)
+    model.eval()
+    input_ids = torch.tensor([[5, 6, 7, 8, 2, 9, 10, 11, 12, 13]])
+    reset_mask = torch.zeros_like(input_ids, dtype=torch.bool)
+    reset_mask[:, 5] = True
+    with torch.no_grad():
+        full = model(input_ids, reset_mask=reset_mask)
+        segment = model(input_ids[:, 5:])
+        without_reset = model(input_ids)
+    torch.testing.assert_close(full.logits[:, :5], without_reset.logits[:, :5])
+    torch.testing.assert_close(full.logits[:, 5:], segment.logits)
+
+
 def test_model_parameter_counts(tiny_model_config: ModelConfig) -> None:
     model = AuroraModel(tiny_model_config)
     total, active = parameter_counts(model)

@@ -12,9 +12,13 @@ from aurora.config import ModelConfig
 
 
 class CausalLanguageModel(Protocol):
-    def __call__(self, input_ids: torch.Tensor, state: Any = None) -> LanguageModelOutput: ...
+    def __call__(
+        self, input_ids: torch.Tensor, state: Any = None, reset_mask: Any = None
+    ) -> LanguageModelOutput: ...
 
-    def forward(self, input_ids: torch.Tensor, state: Any = None) -> LanguageModelOutput: ...
+    def forward(
+        self, input_ids: torch.Tensor, state: Any = None, reset_mask: Any = None
+    ) -> LanguageModelOutput: ...
 
 
 def build_model(config: ModelConfig) -> nn.Module:

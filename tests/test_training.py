@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
+import torch
 
 from aurora.config import ExperimentConfig
 from aurora.data.dataset import MemmapTokenDataset
@@ -18,6 +20,11 @@ def _write_tokens(path: Path, seed: int) -> None:
     rng = np.random.default_rng(seed)
     tokens = rng.integers(0, 64, size=4096, dtype=np.uint16)
     tokens.tofile(path)
+
+
+def _write_document_tokens(path: Path) -> None:
+    pattern = np.array([10, 11, 12, 2, 20, 21, 22, 2], dtype=np.uint16)
+    np.tile(pattern, 512).tofile(path)
 
 
 def test_training_checkpoint_and_resume(
@@ -274,3 +281,73 @@ def test_training_with_weighted_mixture(
     Trainer(config, dataset, train_sampler=sampler).fit()
     checkpoint = load_checkpoint(Path(training.output_dir) / "latest.pt")
     assert checkpoint["step"] == 2
+
+
+def test_training_passes_document_reset_masks(
+    tmp_path: Path,
+    tiny_experiment_config: ExperimentConfig,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    train_path = tmp_path / "train.bin"
+    val_path = tmp_path / "val.bin"
+    _write_document_tokens(train_path)
+    _write_document_tokens(val_path)
+    training = replace(
+        tiny_experiment_config.training,
+        train_path=str(train_path),
+        val_path=str(val_path),
+        max_steps=2,
+        eval_interval=1,
+        eval_batches=1,
+        save_interval=2,
+        output_dir=str(tmp_path / "document_reset_run"),
+        document_reset=True,
+        eos_token_id=2,
+    )
+    config = ExperimentConfig(model=tiny_experiment_config.model, training=training)
+    trainer = Trainer(
+        config,
+        MemmapTokenDataset(train_path, training.seq_len),
+        MemmapTokenDataset(val_path, training.seq_len),
+    )
+    seen: list[torch.Tensor | None] = []
+    original_forward = trainer.model.forward
+
+    def spy(
+        input_ids: torch.Tensor,
+        state: Any = None,
+        reset_mask: torch.Tensor | None = None,
+    ) -> Any:
+        seen.append(reset_mask)
+        return original_forward(input_ids, state=state, reset_mask=reset_mask)
+
+    monkeypatch.setattr(trainer.model, "forward", spy)
+    trainer.fit()
+
+    assert seen
+    assert all(mask is not None for mask in seen)
+    assert all(
+        mask.shape == (training.batch_size, training.seq_len) for mask in seen if mask is not None
+    )
+    assert any(bool(mask.any()) for mask in seen if mask is not None)
+
+
+def test_document_reset_rejects_transformer(
+    tmp_path: Path, tiny_experiment_config: ExperimentConfig
+) -> None:
+    train_path = tmp_path / "train.bin"
+    _write_document_tokens(train_path)
+    model = replace(
+        tiny_experiment_config.model,
+        architecture="transformer",
+        attention_heads=2,
+    )
+    training = replace(
+        tiny_experiment_config.training,
+        train_path=str(train_path),
+        val_path="",
+        document_reset=True,
+    )
+    config = ExperimentConfig(model=model, training=training)
+    with pytest.raises(ValueError, match="only supported for the aurora architecture"):
+        Trainer(config, MemmapTokenDataset(train_path, training.seq_len))

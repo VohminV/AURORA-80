@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from aurora.architecture.model import AuroraModel
-from aurora.config import ExperimentConfig, ModelConfig, load_config
+from aurora.config import ExperimentConfig, ModelConfig, TrainingConfig, load_config
 from aurora.utils import parameter_counts
 
 
@@ -22,6 +22,16 @@ def test_unknown_fields_are_rejected() -> None:
                 "training": {},
             }
         )
+
+
+def test_document_reset_configuration() -> None:
+    config = load_config("configs/smoke.yaml")
+    assert config.training.document_reset is True
+    assert config.training.eos_token_id == 2
+    with pytest.raises(ValueError):
+        TrainingConfig(document_reset=True, eos_token_id=-1)
+    with pytest.raises(ValueError):
+        TrainingConfig(eos_token_id=-2)
 
 
 def test_invalid_top_k_is_rejected() -> None:

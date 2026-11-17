@@ -30,6 +30,21 @@ def test_memory_is_causal_and_stateful() -> None:
     torch.testing.assert_close(continuation_output, full_output[:, 4:])
 
 
+def test_memory_document_reset_matches_fresh_segment() -> None:
+    torch.manual_seed(0)
+    memory = AssociativeMemory(d_model=32, n_heads=2)
+    x = torch.randn(1, 9, 32)
+    with torch.no_grad():
+        full_output, _ = memory(x)
+        segment_output, segment_state = memory(x[:, 4:])
+        reset_mask = torch.zeros(1, 9, dtype=torch.bool)
+        reset_mask[:, 4] = True
+        reset_output, reset_state = memory(x, reset_mask=reset_mask)
+    torch.testing.assert_close(reset_output[:, :4], full_output[:, :4])
+    torch.testing.assert_close(reset_output[:, 4:], segment_output)
+    torch.testing.assert_close(reset_state, segment_state)
+
+
 def test_memory_delta_rule_writes_and_reads() -> None:
     memory = AssociativeMemory(d_model=4, n_heads=1, epsilon=1e-8)
     with torch.no_grad():

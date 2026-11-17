@@ -490,6 +490,8 @@ python -m aurora.training.pretrain \
 
 `--gradient-checkpointing` включает activation checkpointing, `--max-tokens` останавливает обучение по бюджету обработанных токенов, а `--early-stopping-patience` — после заданного числа validation-замеров без улучшения (требуется `--val-path`).
 
+При `training.document_reset: true` trainer строит reset-маску по EOS (`training.eos_token_id`, по умолчанию 2) и сбрасывает состояние recurrent core и associative memory перед первым токеном нового документа. Eval, perplexity и quantization benchmark используют ту же маску из конфига чекпоинта. Reset поддерживается только для `architecture: aurora`; для Transformer baseline trainer завершается с ошибкой. Включайте флаг, если `prepare.py` добавлял EOS после каждого документа.
+
 ### Hyperparameter sweep
 
 ```bash
@@ -692,6 +694,7 @@ Eval-отчёт (`reports/smoke_eval.json`) теперь включает `run_m
 - Offline-калибровка групповых масштабов по минимальной ошибке реконструкции (`--calibrate`).
 - Сравнение FP32/FP16/ternary/INT8/INT4 на одном чекпоинте и датасете (`aurora-quant-bench`).
 - Проверка стабильности состояния на 4k–32k с опциональным reset (`aurora-state-check`).
+- State reset на границах документов в обучении и оценке (`training.document_reset`, EOS-маска для core и memory).
 - Абляция `core`/`core_memory`/`full` с равным token budget (`aurora-ablate`).
 - Hyperparameter sweep runner с генерацией конфигов, seeds, запуском и сводкой по validation loss (`aurora-sweep`).
 - Конфиги 10M/30M/300M и fitting scaling law по loss от parameters/tokens/compute с holdout и compute-optimal оценкой (`aurora-scaling`).
@@ -702,7 +705,7 @@ Eval-отчёт (`reports/smoke_eval.json`) теперь включает `run_m
 - Автоматический BF16/FP16 autocast на CUDA при генерации и оценке perplexity.
 - CUDA AMP (BF16, FP16+GradScaler) и `torch.compile` (`aot_eager`, `inductor`) проверены на 100M; CUDA-замеры — в `docs/benchmarks.md`.
 - CI (lint, mypy, tests, end-to-end smoke на чистом runner), `Makefile`, benchmark throughput/RAM/latency.
-- 218 тестов: причинность, состояния, память, маршрутизация, квантование, сравнение квантизации, длинный контекст, абляция компонентов, hyperparameter sweep, scaling law fit, zero-shot оценка, агрегация результатов, реестр экспериментов, обучение, resume, провенанс, чекпоинты, бэкапы и алерты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, contamination, статистика корпуса, W&B tracker, курирование корпуса, baseline и инференс.
+- 226 тестов: причинность, состояния, document reset, память, маршрутизация, квантование, сравнение квантизации, длинный контекст, абляция компонентов, hyperparameter sweep, scaling law fit, zero-shot оценка, агрегация результатов, реестр экспериментов, обучение, resume, провенанс, чекпоинты, бэкапы и алерты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, contamination, статистика корпуса, W&B tracker, курирование корпуса, baseline и инференс.
 
 ---
 
@@ -805,7 +808,7 @@ mypy aurora
 
 - Рекуррентное ядро и память обрабатывают токены последовательно. Это упрощает верификацию, но ограничивает скорость обучения. Следующий шаг — chunkwise parallel scan и оптимизированные ядра.
 - `L_memory` и `L_consistency` реализованы, но их коэффициенты не подобраны. Smoke-абляция `core`/`core_memory`/`full` есть, вклад компонентов на обученном 100M ещё не измерен.
-- Состояние не сбрасывается на границах документов внутри упакованных train-последовательностей: датасет отдаёт плоские окна токенов (ADR 0004). Reset доступен в `aurora-state-check` для замеров; document-aware обучение — в M2.
+- Document reset срабатывает только по явным EOS-маркерам (`training.document_reset`), а loss на переходе EOS → первый токен нового документа не маскируется. Transformer baseline reset не поддерживает; learned initial state по-прежнему не выбран (ADR 0004).
 - Transformer baseline реализован, но честное сравнение на реальном корпусе при равных данных и compute ещё не проводилось.
 - CUDA AMP и `torch.compile` проверены на RTX 3050: eager CUDA медленнее CPU из-за последовательного ядра, `inductor` ускоряет batched inference, но MoE упирается в recompile limit, поэтому compiled training/generation медленнее eager. CUDA graphs не проверены. Основной `.venv` остаётся CPU-only; CUDA-замеры выполнены в отдельном `.venv-cuda`.
 - 80B-конфигурация не обучалась и не запускалась. Это расчётная конфигурация.

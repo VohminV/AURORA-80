@@ -7,6 +7,18 @@ import torch
 from torch.utils.data import Dataset
 
 
+def document_reset_mask(input_ids: torch.Tensor, eos_token_id: int) -> torch.Tensor:
+    """Mark tokens that start a new document after an EOS token."""
+    if input_ids.ndim != 2:
+        raise ValueError("input_ids must have shape (batch, time)")
+    if eos_token_id < 0:
+        raise ValueError("eos_token_id must be non-negative")
+    mask = torch.zeros_like(input_ids, dtype=torch.bool)
+    if input_ids.shape[1] > 1:
+        mask[:, 1:] = input_ids[:, :-1] == eos_token_id
+    return mask
+
+
 class MemmapTokenDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
     def __init__(
         self,

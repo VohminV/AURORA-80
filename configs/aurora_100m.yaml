@@ -23,6 +23,7 @@ training:
   val_path: data/processed/val.bin
   seq_len: 512
   dtype: uint16
+  document_reset: true
   batch_size: 4
   grad_accum_steps: 8
   max_steps: 100000

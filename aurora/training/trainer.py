@@ -21,6 +21,7 @@ from aurora.architecture.factory import (
     set_gradient_checkpointing,
 )
 from aurora.config import ExperimentConfig
+from aurora.data.dataset import document_reset_mask
 from aurora.data.provenance import (
     DatasetSource,
     collect_dataset_sources,
@@ -56,6 +57,8 @@ class Trainer:
     ) -> None:
         self.config = config
         self.training = config.training
+        if self.training.document_reset and config.model.architecture != "aurora":
+            raise ValueError("document_reset is only supported for the aurora architecture")
         self.logger = logging.getLogger("aurora.trainer")
         self.notifier: AlertNotifier | None = None
         alert_url = os.environ.get(ALERT_WEBHOOK_ENV, "").strip()
@@ -159,6 +162,22 @@ class Trainer:
             "last_validation": self.last_validation_metrics,
             "metrics_file": str(self.metrics_file),
         }
+
+    def _document_reset_mask(self, input_ids: torch.Tensor) -> torch.Tensor | None:
+        if not self.training.document_reset:
+            return None
+        return document_reset_mask(input_ids, self.training.eos_token_id)
+
+    def _forward_model(
+        self,
+        model: torch.nn.Module,
+        input_ids: torch.Tensor,
+        reset_mask: torch.Tensor | None,
+    ) -> Any:
+        language_model = cast(CausalLanguageModel, model)
+        if reset_mask is None:
+            return language_model(input_ids)
+        return language_model(input_ids, reset_mask=reset_mask)
 
     def _build_loader(
         self,
@@ -378,8 +397,9 @@ class Trainer:
         for inputs, targets in self.val_loader:
             inputs = inputs.to(self.device, non_blocking=True)
             targets = targets.to(self.device, non_blocking=True)
+            reset_mask = self._document_reset_mask(inputs)
             with self._autocast():
-                logits = cast(CausalLanguageModel, self.model)(inputs).logits
+                logits = self._forward_model(self.model, inputs, reset_mask).logits
                 loss = F.cross_entropy(
                     logits.reshape(-1, self.config.model.vocab_size),
                     targets.reshape(-1),
@@ -546,6 +566,11 @@ class Trainer:
         self._maybe_enable_qat(self.step)
         self._set_train_model()
         self.model.train()
+        if self.training.document_reset:
+            self.logger.info(
+                "Resetting recurrent and memory state after EOS token %d",
+                self.training.eos_token_id,
+            )
 
         train_iterator = iter(self.train_loader)
         tokens_per_step = (
@@ -579,9 +604,10 @@ class Trainer:
                         inputs, targets = next(train_iterator)
                     inputs = inputs.to(self.device, non_blocking=True)
                     targets = targets.to(self.device, non_blocking=True)
+                    reset_mask = self._document_reset_mask(inputs)
 
                     with self._autocast():
-                        output = cast(CausalLanguageModel, self.train_model)(inputs)
+                        output = self._forward_model(self.train_model, inputs, reset_mask)
                         lm_loss = F.cross_entropy(
                             output.logits.reshape(-1, self.config.model.vocab_size),
                             targets.reshape(-1),
