@@ -486,8 +486,8 @@ cache.
 | `architecture` | Model architecture (must be `aurora`) |
 | `evaluation` | Git state and environment |
 | `dataset` | Train/validation sources with SHA-256 and `dataset_version` |
-| `settings` | Variants, steps, sequence/batch sizes, token budget, device, seed and paths |
-| `results.<variant>` | Flags, run id, output paths, parameter counts, training and validation metrics |
+| `settings` | Variants, variant count, axis values, max-variant cap, steps, sequence/batch sizes, token budget, device, seed and paths |
+| `results.<variant>` | `flags` (`use_memory`/`use_moe`), explicit `overrides`, effective `model` values, run id, output paths, parameter counts, training and validation metrics |
 
 Variants are `core` (`use_memory=false`, `use_moe=false`), `core_memory`
 (`use_memory=true`, `use_moe=false`) and `full` (both enabled). Every variant is
@@ -495,6 +495,15 @@ trained from scratch with the same seed, data and token budget. When `core` is
 present, the other variants also receive `loss_delta_vs_core` and
 `perplexity_ratio_vs_core`. Disabled branches remove their parameters, state and
 losses rather than masking them at runtime.
+
+The model-size axes `n_levels`, `d_state`, `memory_heads`, `n_experts` and
+`top_k` can take multiple values. The tool builds their Cartesian product for
+each preset, skips axes that do not apply to a disabled branch, and adds suffixes
+only for values that differ from the base config (for example
+`core_n_levels1_d_state8`). `settings.axes` records the requested values and
+`settings.variant_count` / `settings.max_variants` record the grid size and cap.
+Each result's `overrides` contains only the non-default axes applied to that
+preset, while `model` contains the effective values used to build the model.
 
 ## Hyperparameter sweep report (`sweep.json`)
 

@@ -126,6 +126,132 @@ def test_run_ablation_end_to_end(tmp_path: Path, tiny_experiment_config: Experim
         assert "perplexity_ratio_vs_core" in results[name]["validation"]
 
 
+def test_run_ablation_expands_model_axes(
+    tmp_path: Path, tiny_experiment_config: ExperimentConfig
+) -> None:
+    train_path = tmp_path / "train.bin"
+    val_path = tmp_path / "val.bin"
+    _write_tokens(train_path, 81)
+    _write_tokens(val_path, 82)
+    report = run_ablation(
+        tiny_experiment_config,
+        variants=("core",),
+        axes={"n_levels": [2, 1], "d_state": [16, 8]},
+        max_steps=1,
+        train_path=train_path,
+        val_path=val_path,
+        output_root=tmp_path / "axis_ablation",
+        device="cpu",
+        seed=5,
+    )
+
+    expected_names = [
+        "core",
+        "core_d_state8",
+        "core_n_levels1",
+        "core_n_levels1_d_state8",
+    ]
+    assert report["settings"]["variants"] == expected_names
+    assert report["settings"]["variant_count"] == len(expected_names)
+    assert report["settings"]["axes"] == {"n_levels": [2, 1], "d_state": [16, 8]}
+    results = report["results"]
+    assert list(results) == expected_names
+    assert results["core"]["overrides"] == {}
+    assert results["core"]["model"] == {
+        "n_levels": 2,
+        "d_state": 16,
+        "memory_heads": 2,
+        "n_experts": 4,
+        "top_k": 2,
+    }
+    assert results["core_n_levels1_d_state8"]["overrides"] == {
+        "n_levels": 1,
+        "d_state": 8,
+    }
+    assert results["core_n_levels1_d_state8"]["model"]["n_levels"] == 1
+    assert results["core_n_levels1_d_state8"]["model"]["d_state"] == 8
+    assert (
+        results["core_n_levels1_d_state8"]["parameters"]["total"]
+        < results["core"]["parameters"]["total"]
+    )
+    for name in expected_names[1:]:
+        assert "loss_delta_vs_core" in results[name]["validation"]
+        assert "perplexity_ratio_vs_core" in results[name]["validation"]
+
+
+def test_axis_variants_only_apply_to_enabled_branches(
+    tmp_path: Path, tiny_experiment_config: ExperimentConfig
+) -> None:
+    train_path = tmp_path / "train.bin"
+    val_path = tmp_path / "val.bin"
+    _write_tokens(train_path, 91)
+    _write_tokens(val_path, 92)
+    report = run_ablation(
+        tiny_experiment_config,
+        variants=("core", "core_memory", "full"),
+        axes={
+            "n_levels": [1],
+            "memory_heads": [4],
+            "n_experts": [2],
+            "top_k": [1],
+        },
+        max_steps=1,
+        train_path=train_path,
+        val_path=val_path,
+        output_root=tmp_path / "branch_axis_ablation",
+        device="cpu",
+    )
+
+    results = report["results"]
+    assert list(results) == [
+        "core_n_levels1",
+        "core_memory_n_levels1_memory_heads4",
+        "full_n_levels1_memory_heads4_n_experts2_top_k1",
+    ]
+    assert results["core_n_levels1"]["overrides"] == {"n_levels": 1}
+    assert results["core_memory_n_levels1_memory_heads4"]["overrides"] == {
+        "n_levels": 1,
+        "memory_heads": 4,
+    }
+    assert results["full_n_levels1_memory_heads4_n_experts2_top_k1"]["overrides"] == {
+        "n_levels": 1,
+        "memory_heads": 4,
+        "n_experts": 2,
+        "top_k": 1,
+    }
+    assert results["full_n_levels1_memory_heads4_n_experts2_top_k1"]["model"]["n_experts"] == 2
+    assert results["full_n_levels1_memory_heads4_n_experts2_top_k1"]["model"]["top_k"] == 1
+
+
+def test_run_ablation_validates_axes(tiny_experiment_config: ExperimentConfig) -> None:
+    with pytest.raises(ValueError, match="Unknown ablation axes"):
+        run_ablation(tiny_experiment_config, axes={"unknown": [1]})
+    with pytest.raises(ValueError, match="positive integers"):
+        run_ablation(tiny_experiment_config, axes={"n_levels": [0]})
+    with pytest.raises(ValueError, match="provided twice"):
+        run_ablation(
+            tiny_experiment_config,
+            axes={"n_levels": [2]},
+            n_levels=[4],
+        )
+    with pytest.raises(ValueError, match="Invalid ablation variant"):
+        run_ablation(
+            tiny_experiment_config,
+            variants=("full",),
+            n_experts=[2],
+            top_k=[3],
+        )
+    with pytest.raises(ValueError, match="max-variants"):
+        run_ablation(
+            tiny_experiment_config,
+            variants=("core",),
+            n_levels=[2, 1],
+            max_variants=1,
+        )
+    with pytest.raises(ValueError, match="max_variants must be positive"):
+        run_ablation(tiny_experiment_config, max_variants=0)
+
+
 def test_run_ablation_validates_inputs(
     tmp_path: Path, tiny_experiment_config: ExperimentConfig
 ) -> None:

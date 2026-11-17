@@ -280,6 +280,22 @@ python -m aurora.benchmarks.ablation \
 
 Варианты обучаются с нуля на одних данных, seed и token budget: `core` без памяти и MoE, `core_memory` с памятью, `full` с памятью и MoE. Отчёт содержит параметры (total/active), loss/perplexity, скорость, run id и чекпоинты, а также `loss_delta_vs_core` и `perplexity_ratio_vs_core`. Отключённые компоненты полностью удаляют свои параметры, состояние и лоссы. Smoke-прогон проверяет механику абляции; выводы о вкладе компонентов требуют обученного 100M-чекпоинта и нескольких seed.
 
+Для model-size осей можно передать несколько значений `--n-levels`, `--d-state`, `--memory-heads`, `--n-experts` и `--top-k`:
+
+```bash
+python -m aurora.benchmarks.ablation \
+  --config configs/smoke.yaml \
+  --variants core full \
+  --n-levels 1 2 \
+  --d-state 8 16 \
+  --n-experts 2 4 \
+  --top-k 1 2 \
+  --max-steps 10 \
+  --output reports/smoke_axis_ablation.json
+```
+
+Строится декартово произведение значений в порядке осей. Оси, не относящиеся к пресету, фиксируются на базовом значении (`memory_heads` для `core`, `n_experts`/`top_k` для `core` и `core_memory`). Вариант с базовыми значениями сохраняет имя пресета, остальные получают суффиксы вида `_n_levels1_d_state8`; `--max-variants` (по умолчанию 128) ограничивает размер сетки, а невалидные комбинации вроде `top_k > n_experts` отклоняются до запуска. В отчёте у каждого варианта есть `overrides` и эффективные значения `model`.
+
 ### 8. Zero-shot multiple-choice оценка
 
 ```bash
@@ -695,7 +711,7 @@ Eval-отчёт (`reports/smoke_eval.json`) теперь включает `run_m
 - Сравнение FP32/FP16/ternary/INT8/INT4 на одном чекпоинте и датасете (`aurora-quant-bench`).
 - Проверка стабильности состояния на 4k–32k с опциональным reset (`aurora-state-check`).
 - State reset на границах документов в обучении и оценке (`training.document_reset`, EOS-маска для core и memory).
-- Абляция `core`/`core_memory`/`full` с равным token budget (`aurora-ablate`).
+- Абляция `core`/`core_memory`/`full` и осей `n_levels`/`d_state`/`memory_heads`/`n_experts`/`top_k` с равным token budget (`aurora-ablate`).
 - Hyperparameter sweep runner с генерацией конфигов, seeds, запуском и сводкой по validation loss (`aurora-sweep`).
 - Конфиги 10M/30M/300M и fitting scaling law по loss от parameters/tokens/compute с holdout и compute-optimal оценкой (`aurora-scaling`).
 - Загрузка чекпоинтов для инференса с автоматическим включением ternary-режима.
@@ -705,7 +721,7 @@ Eval-отчёт (`reports/smoke_eval.json`) теперь включает `run_m
 - Автоматический BF16/FP16 autocast на CUDA при генерации и оценке perplexity.
 - CUDA AMP (BF16, FP16+GradScaler) и `torch.compile` (`aot_eager`, `inductor`) проверены на 100M; CUDA-замеры — в `docs/benchmarks.md`.
 - CI (lint, mypy, tests, end-to-end smoke на чистом runner), `Makefile`, benchmark throughput/RAM/latency.
-- 226 тестов: причинность, состояния, document reset, память, маршрутизация, квантование, сравнение квантизации, длинный контекст, абляция компонентов, hyperparameter sweep, scaling law fit, zero-shot оценка, агрегация результатов, реестр экспериментов, обучение, resume, провенанс, чекпоинты, бэкапы и алерты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, contamination, статистика корпуса, W&B tracker, курирование корпуса, baseline и инференс.
+- 229 тестов: причинность, состояния, document reset, память, маршрутизация, квантование, сравнение квантизации, длинный контекст, абляция компонентов и model-size осей, hyperparameter sweep, scaling law fit, zero-shot оценка, агрегация результатов, реестр экспериментов, обучение, resume, провенанс, чекпоинты, бэкапы и алерты, gradient checkpointing, mixture, document split, HTTP API, AURORA-TQ, data card, model card, contamination, статистика корпуса, W&B tracker, курирование корпуса, baseline и инференс.
 
 ---
 

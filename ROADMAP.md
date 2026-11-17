@@ -94,7 +94,7 @@
 - [x] CI: lint, mypy, tests и end-to-end smoke на чистом runner.
 - [x] Docker CPU/CUDA, `Makefile`.
 - [x] ADR и документация форматов.
-- [x] 226 тестов; `ruff`, `mypy` и format-check проходят.
+- [x] 229 тестов; `ruff`, `mypy` и format-check проходят.
 
 ### 0.2 Чего ещё нет
 
@@ -145,7 +145,7 @@ throughput; CUDA eager медленнее CPU из-за последовател
 - [x] `P0` Обучение, validation, checkpoints, resume, QAT.
 - [x] `P0` Данные: prepare, manifest, versioning, mixture, document split.
 - [x] `P0` Inference: generation, perplexity, HTTP API, batched/streaming.
-- [x] `P0` 226 тестов, `ruff`, `mypy`, end-to-end smoke на чистом runner.
+- [x] `P0` 229 тестов, `ruff`, `mypy`, end-to-end smoke на чистом runner.
 - [x] `P0` Проверены AMP, gradient checkpointing и `torch.compile` на CUDA.
 - [x] `P0` Замерены throughput, память и latency прототипа (CPU и CUDA).
 
@@ -237,8 +237,9 @@ throughput; CUDA eager медленнее CPU из-за последовател
 - [ ] `P2` Варианты памяти: linear attention, delta-net, Titans-like.
 - [ ] `P2` Expert choice routing.
 
-Текущий `aurora-ablate` закрывает только `core`/`core_memory`/`full`; для
-остальных пунктов его нужно расширить конфигурационными вариантами.
+`aurora-ablate` покрывает `core`/`core_memory`/`full` и оси `n_levels`,
+`d_state`, `memory_heads`, `n_experts`, `top_k`; эмпирические прогоны и выводы
+по этим осям ещё не сделаны.
 
 ### 3.2 Scaling laws
 
@@ -476,7 +477,7 @@ throughput; CUDA eager медленнее CPU из-за последовател
 3. [x] `P0` Добавить конфиги 10M/30M/300M и инструмент fit scaling law
    (`aurora-scaling`; эмпирический fit ещё не выполнен).
 4. [x] `P1` Реализовать state reset на границах документов и проверить на smoke.
-5. [ ] `P1` Расширить `aurora-ablate` на `n_levels`, `d_state`, `memory_heads`,
+5. [x] `P1` Расширить `aurora-ablate` на `n_levels`, `d_state`, `memory_heads`,
    `n_experts`, `top_k`.
 6. [ ] `P1` Сделать memory-mapped загрузку экспертов и прототип expert cache.
 7. [ ] `P1` Реализовать быстрый ternary matmul и сравнить с dense path.
